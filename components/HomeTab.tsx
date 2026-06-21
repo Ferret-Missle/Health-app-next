@@ -1,0 +1,143 @@
+'use client'
+
+import type { TabProps } from '@/lib/types'
+import { DATA } from '@/lib/data'
+
+export default function HomeTab({ s, c, dailyTarget, curW, remainKg, pct, onTrack, today }: TabProps) {
+  const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
+
+  const last7  = DATA.slice(-7)
+  const sumW   = last7.reduce((a, b) => a + b.d, 0)
+
+  const W = 348, H = 60, p = 6
+  const vals = last7.map(x => x.d)
+  const mn = Math.min(0, ...vals), mx = Math.max(0, ...vals)
+  const X = (i: number) => p + i * (W - 2 * p) / (last7.length - 1)
+  const Y = (v: number) => H - p - (v - mn) / ((mx - mn) || 1) * (H - 2 * p)
+  const y0   = Y(0)
+  const pts  = last7.map((x, i) => `${X(i)},${Y(x.d)}`).join(' ')
+  const area = `M ${X(0)},${y0} ` + last7.map((x, i) => `L ${X(i)},${Y(x.d)}`).join(' ') + ` L ${X(last7.length - 1)},${y0} Z`
+
+  const statusBg   = onTrack ? c.onTrackC : c.offTrackC
+  const statusText = onTrack ? c.onTrack  : c.offTrack
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, animation: 'fadeUp .35s ease both' }}>
+
+      <div style={{ fontSize: 13, color: c.onSurfVar, marginTop: 6 }}>2026年6月20日 (土)</div>
+
+      {/* Today KPI card */}
+      <div style={{ background: c.surfLow, borderRadius: 24, padding: '22px 22px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, letterSpacing: '.1px', color: c.onSurfVar }}>今日のカロリー収支</span>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 600,
+            padding: '4px 10px', borderRadius: 999,
+            background: today.d >= 0 ? c.creditC : c.debitC,
+            color:      today.d >= 0 ? c.credit  : c.debit,
+          }}>{today.d >= 0 ? '黒字' : '赤字'}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: c.onSurfVar }}>{today.d >= 0 ? '+' : '−'}</span>
+          <span style={{ fontSize: 52, lineHeight: '56px', fontWeight: 500, fontFeatureSettings: '"tnum"', letterSpacing: '-1px', color: c.onSurf }}>
+            {fmt(Math.abs(today.d))}
+          </span>
+          <span style={{ fontSize: 15, color: c.onSurfVar, fontWeight: 500 }}>kcal</span>
+        </div>
+        <div style={{ display: 'flex', gap: 18, marginTop: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 11, color: c.onSurfVar }}>消費</span>
+            <span style={{ fontSize: 17, fontWeight: 600, fontFeatureSettings: '"tnum"', color: c.tertiary }}>{fmt(today.burn)}</span>
+          </div>
+          <div style={{ width: 1, background: c.outlineVar, opacity: .6 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 11, color: c.onSurfVar }}>摂取</span>
+            <span style={{ fontSize: 17, fontWeight: 600, fontFeatureSettings: '"tnum"', color: c.primary }}>{fmt(today.intake)}</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ alignSelf: 'flex-end', fontSize: 11, color: c.onSurfVar }}>消費 − 摂取</div>
+        </div>
+      </div>
+
+      {/* Goal progress card */}
+      <div style={{ background: c.surfLow, borderRadius: 24, padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: c.onSurfVar }}>目標達成まで</span>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 600,
+            padding: '4px 10px 4px 8px', borderRadius: 999,
+            background: statusBg, color: statusText,
+          }}>
+            <span className="ms" style={{ fontSize: 14, marginRight: 3 }}>
+              {onTrack ? 'trending_down' : 'priority_high'}
+            </span>
+            {onTrack ? 'オントラック' : '要調整'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 32, fontWeight: 500, fontFeatureSettings: '"tnum"', lineHeight: '34px' }}>残り {remainKg.toFixed(1)}</div>
+            <div style={{ fontSize: 12, color: c.onSurfVar, marginTop: 2 }}>kg</div>
+          </div>
+          <div style={{ width: 1, height: 30, background: c.outlineVar, opacity: .6, marginBottom: 14 }} />
+          <div>
+            <div style={{ fontSize: 32, fontWeight: 500, fontFeatureSettings: '"tnum"', lineHeight: '34px' }}>残り {s.days}</div>
+            <div style={{ fontSize: 12, color: c.onSurfVar, marginTop: 2 }}>日</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 16, height: 10, borderRadius: 999, background: c.surfHighest, overflow: 'hidden', position: 'relative' }}>
+          <div style={{ height: '100%', borderRadius: 999, background: c.primary, width: `${Math.round(pct)}%`, transition: 'width .4s' }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7, fontSize: 11, fontFeatureSettings: '"tnum"', color: c.onSurfVar }}>
+          <span>現在 {curW.toFixed(1)} kg</span>
+          <span>目標 {s.tgtW.toFixed(1)} kg</span>
+        </div>
+      </div>
+
+      {/* Sparkline card */}
+      <div style={{ background: c.surfLow, borderRadius: 24, padding: '18px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: c.onSurfVar }}>直近7日の収支</span>
+          <span style={{ fontSize: 12, color: c.onSurfVar, fontFeatureSettings: '"tnum"' }}>
+            合計 {sumW >= 0 ? '+' : '−'}{fmt(Math.abs(sumW))} kcal
+          </span>
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+          <path d={area} fill={c.credit} opacity={0.12} />
+          <line x1={p} x2={W - p} y1={y0} y2={y0} stroke={c.outlineVar} strokeWidth={1} strokeDasharray="2 3" />
+          <polyline points={pts} fill="none" stroke={c.credit} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+          {last7.map((x, i) => (
+            <circle key={i} cx={X(i)} cy={Y(x.d)} r={2.6} fill={x.d >= 0 ? c.credit : c.debit} />
+          ))}
+        </svg>
+      </div>
+
+      {/* AI Advisor card */}
+      <div style={{ background: c.primaryC, borderRadius: 24, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <span className="ms" style={{ fontSize: 24, color: c.onPrimaryC }}>auto_awesome</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: c.onPrimaryC, marginBottom: 4 }}>AIアドバイザー</div>
+            <div style={{ fontSize: 12.5, lineHeight: '18px', color: c.onPrimaryC, opacity: .9 }}>
+              直近1週間は平日に黒字が安定。週末の摂取オーバーが目標達成日の遅れ要因です。
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <button type="button" style={{
+            border: 'none', borderRadius: 999, background: c.primary, color: c.onPrimary,
+            height: 48, fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+            <span className="ms" style={{ fontSize: 20 }}>auto_awesome</span>アドバイスをもらう
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', fontSize: 11, color: c.onPrimaryC, opacity: .85 }}>
+            <span className="ms" style={{ fontSize: 14 }}>bolt</span>
+            <span style={{ fontFeatureSettings: '"tnum"' }}>本日あと約 4 回</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  )
+}
