@@ -1,7 +1,7 @@
 'use client'
 
 import type { TabProps } from '@/lib/types'
-import { DATA, type DayData } from '@/lib/data'
+import { type DayData } from '@/lib/data'
 import type { C } from '@/lib/colors'
 
 function arrowBtn(disabled: boolean, onClick: () => void, dir: string, c: C) {
@@ -185,8 +185,8 @@ function PfcChart({ p, f, cc, dark, c }: { p: number, f: number, cc: number, dar
   )
 }
 
-export default function BalanceTab({ s, set, c, dailyTarget }: TabProps) {
-  const all = DATA
+export default function BalanceTab({ s, set, c, data, dailyTarget }: TabProps) {
+  const all = data
 
   const rawWindow = () => {
     if (s.range === 0) return all.slice()

@@ -1,19 +1,21 @@
 'use client'
 
 import type { TabProps } from '@/lib/types'
-import { DATA, movingAvg } from '@/lib/data'
+import { movingAvg, type DayData } from '@/lib/data'
 import type { C } from '@/lib/colors'
 
-function TrajectoryChart({ tgtW, days, c }: { tgtW: number, days: number, c: C }) {
-  const d       = DATA
+function TrajectoryChart({ d, tgtW, days, c }: { d: DayData[], tgtW: number, days: number, c: C }) {
   const W = 352, H = 214, pl = 30, pr = 12, pt = 12, pb = 36
   const iw = W - pl - pr, ih = H - pt - pb
 
-  const measured = movingAvg(d.map(x => x.w), 7)
-  const W0       = measured[0]
-  const k        = 7200
-  const horizon  = d.length + days
-  const avgD     = d.reduce((s, x) => s + x.d, 0) / d.length
+  // Plot only days with a measured weight, keeping each point at its real day index.
+  const weighedIdx = d.map((x, i) => ({ i, w: x.w })).filter(p => p.w > 0)
+  const smoothed   = movingAvg(weighedIdx.map(p => p.w), 7)
+  const measured   = weighedIdx.map((p, j) => ({ i: p.i, v: smoothed[j] }))
+  const W0         = measured.length ? measured[0].v : 0
+  const k          = 7200
+  const horizon    = d.length + days
+  const avgD       = d.reduce((s, x) => s + x.d, 0) / d.length
 
   const pred: number[] = []
   for (let i = 0; i < horizon; i++) {
@@ -21,7 +23,7 @@ function TrajectoryChart({ tgtW, days, c }: { tgtW: number, days: number, c: C }
     pred.push(W0 - cum / k)
   }
 
-  const allVals = [...measured, ...pred, W0, tgtW]
+  const allVals = [...measured.map(m => m.v), ...pred, W0, tgtW]
   const ymin = Math.min(...allVals) - 0.5, ymax = Math.max(...allVals) + 0.5
   const axisY = pt + ih
 
@@ -47,9 +49,11 @@ function TrajectoryChart({ tgtW, days, c }: { tgtW: number, days: number, c: C }
         stroke={c.onSurfVar} strokeWidth={1.6} strokeDasharray="5 4" />
       <polyline points={pred.map((v, i) => `${X(i)},${Y(v)}`).join(' ')}
         fill="none" stroke={c.tertiary} strokeWidth={2} strokeDasharray="5 3" />
-      <polyline points={measured.map((v, i) => `${X(i)},${Y(v)}`).join(' ')}
+      <polyline points={measured.map(m => `${X(m.i)},${Y(m.v)}`).join(' ')}
         fill="none" stroke={c.primary} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={X(d.length - 1)} cy={Y(measured[measured.length - 1])} r={4} fill={c.primary} />
+      {measured.length > 0 && (
+        <circle cx={X(measured[measured.length - 1].i)} cy={Y(measured[measured.length - 1].v)} r={4} fill={c.primary} />
+      )}
       <line x1={X(d.length - 1)} y1={pt} x2={X(d.length - 1)} y2={axisY}
         stroke={c.primary} strokeWidth={1} strokeDasharray="2 3" opacity={0.45} />
       <line x1={pl} x2={W - pr} y1={axisY} y2={axisY} stroke={c.outlineVar} strokeWidth={1} />
@@ -74,12 +78,12 @@ function TrajectoryChart({ tgtW, days, c }: { tgtW: number, days: number, c: C }
   )
 }
 
-function ScatterChart({ c }: { kVal: number, c: C }) {
-  const d  = DATA
+function ScatterChart({ d, c }: { d: DayData[], kVal: number, c: C }) {
   const W = 352, H = 190, pl = 32, pr = 10, pt = 12, pb = 26
   const iw = W - pl - pr, ih = H - pt - pb
 
-  const xs   = d.map(x => x.cum), ys = d.map(x => x.w)
+  const dw   = d.filter(x => x.w > 0)   // only days with a measured weight
+  const xs   = dw.map(x => x.cum), ys = dw.map(x => x.w)
   const xmin = Math.min(...xs), xmax = Math.max(...xs)
   const ymin = Math.min(...ys) - 0.3, ymax = Math.max(...ys) + 0.3
 
@@ -108,19 +112,22 @@ function ScatterChart({ c }: { kVal: number, c: C }) {
         x1={X(xmin)} y1={Y(slope * xmin + intercept)}
         x2={X(xmax)} y2={Y(slope * xmax + intercept)}
         stroke={c.primary} strokeWidth={2.4} />
-      {d.map((x, i) => <circle key={i} cx={X(x.cum)} cy={Y(x.w)} r={3} fill={c.tertiary} opacity={0.75} />)}
+      {dw.map((x, i) => <circle key={i} cx={X(x.cum)} cy={Y(x.w)} r={3} fill={c.tertiary} opacity={0.75} />)}
       <text x={W - pr} y={H - 6} textAnchor="end" fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">累積黒字 →</text>
       <text x={pl - 5} y={pt - 2} textAnchor="start" fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">体重 kg</text>
     </svg>
   )
 }
 
-function BodyCompChart({ dark, c }: { dark: boolean, c: C }) {
-  const d       = DATA
-  const samples = [d[0], d[7], d[14], d[21], d[29]]
+function BodyCompChart({ d, dark, c }: { d: DayData[], dark: boolean, c: C }) {
+  // Up to 5 evenly-spaced days that have both weight and body-fat measured.
+  const measured = d.filter(x => x.w > 0 && x.bf > 0)
+  const samples  = measured.length <= 5
+    ? measured
+    : Array.from({ length: 5 }, (_, i) => measured[Math.round(i * (measured.length - 1) / 4)])
   const W = 352, H = 150, pl = 6, pr = 6, pt = 10, pb = 22
   const iw = W - pl - pr, ih = H - pt - pb, n = samples.length
-  const mx   = Math.max(...samples.map(x => x.w)) * 1.05
+  const mx   = (Math.max(...samples.map(x => x.w)) || 1) * 1.05
   const slot  = iw / n, bw = Math.min(40, slot * 0.5)
   const Y = (v: number) => pt + ih - v / mx * ih
   const base  = pt + ih
@@ -148,7 +155,7 @@ function BodyCompChart({ dark, c }: { dark: boolean, c: C }) {
   )
 }
 
-export default function ForecastTab({ s, c, onTrack, kVal }: TabProps) {
+export default function ForecastTab({ s, c, data, onTrack, kVal }: TabProps) {
   const statusBg   = onTrack ? c.onTrackC : c.offTrackC
   const statusText = onTrack ? c.onTrack  : c.offTrack
 
@@ -173,7 +180,7 @@ export default function ForecastTab({ s, c, onTrack, kVal }: TabProps) {
           </span>
         </div>
         <div style={{ margin: '8px 0 2px' }}>
-          <TrajectoryChart tgtW={s.tgtW} days={s.days} c={c} />
+          <TrajectoryChart d={data} tgtW={s.tgtW} days={s.days} c={c} />
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 4px 0', fontSize: 11, color: c.onSurfVar }}>
           {[
@@ -202,10 +209,10 @@ export default function ForecastTab({ s, c, onTrack, kVal }: TabProps) {
           </div>
         </div>
         <div style={{ margin: '8px 0 2px' }}>
-          <ScatterChart kVal={kVal} c={c} />
+          <ScatterChart d={data} kVal={kVal} c={c} />
         </div>
         <div style={{ fontSize: 11, color: c.onSurfVar, padding: '4px 4px 0' }}>
-          サンプル {DATA.length}日 / 3週間以上で k0=7,200 からキャリブ値へ切替
+          サンプル {data.length}日 / 3週間以上で k0=7,200 からキャリブ値へ切替
         </div>
       </div>
 
@@ -223,7 +230,7 @@ export default function ForecastTab({ s, c, onTrack, kVal }: TabProps) {
             </span>
           </div>
         </div>
-        <BodyCompChart dark={s.dark} c={c} />
+        <BodyCompChart d={data} dark={s.dark} c={c} />
         <div style={{ fontSize: 11, color: c.onSurfVar, padding: '8px 4px 0' }}>
           体脂肪量 = 体重 × 体脂肪率(派生値)。質=脂肪が減っているか。
         </div>

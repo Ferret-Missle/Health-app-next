@@ -1,5 +1,7 @@
 -- Run once against your Neon database to create the schema
 
+-- access_token / refresh_token are encrypted at rest (AES-256-GCM, see lib/crypto.ts).
+-- Stored as "enc:v1:<iv>:<tag>:<ciphertext>"; legacy plaintext rows are still readable.
 CREATE TABLE IF NOT EXISTS oauth_tokens (
   provider      TEXT        PRIMARY KEY,
   access_token  TEXT        NOT NULL,

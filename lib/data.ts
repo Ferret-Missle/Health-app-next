@@ -51,6 +51,61 @@ function gen(): DayData[] {
 
 export const DATA: DayData[] = gen();
 
+/** A daily_data row as returned from the DB (snake_case, numerics may be strings). */
+export interface DailyRow {
+  date:           string;        // 'YYYY-MM-DD' (JST calendar date)
+  burn_kcal:      number | null;
+  steps:          number | null;
+  heart_rate_avg: number | null;
+  sleep_min:      number | null;
+  weight_kg:      number | string | null;
+  body_fat_pct:   number | string | null;
+  intake_kcal:    number | null;
+  p_g:            number | string | null;
+  f_g:            number | string | null;
+  c_g:            number | string | null;
+}
+
+const num = (v: number | string | null | undefined): number => {
+  const n = typeof v === 'string' ? parseFloat(v) : v;
+  return n == null || Number.isNaN(n) ? 0 : n;
+};
+
+/**
+ * Convert DB rows (one per JST date) into the DayData[] shape the UI consumes.
+ * Rows are expected sorted ascending by date. cum (cumulative balance) is
+ * recomputed across the returned window, matching the seed generator's logic.
+ */
+export function rowsToDayData(rows: DailyRow[]): DayData[] {
+  let cum = 0;
+  return rows.map(r => {
+    // 'YYYY-MM-DD' -> local Date at midnight (treat the string as the calendar date)
+    const [yr, mon, dom] = r.date.split('-').map(Number);
+    const dt = new Date(yr, mon - 1, dom);
+    const burn   = num(r.burn_kcal);
+    const intake = num(r.intake_kcal);
+    const d      = burn - intake;
+    cum += d;
+    return {
+      dt,
+      md:  `${dt.getMonth() + 1}/${dt.getDate()}`,
+      dom: dt.getDate(),
+      mon: dt.getMonth(),
+      yr:  dt.getFullYear(),
+      dow: dt.getDay(),
+      burn,
+      intake,
+      d,
+      w:  num(r.weight_kg),
+      bf: num(r.body_fat_pct),
+      p:  num(r.p_g),
+      f:  num(r.f_g),
+      cc: num(r.c_g),
+      cum,
+    };
+  });
+}
+
 export function movingAvg(arr: number[], k: number): number[] {
   return arr.map((_, i) => {
     const a = arr.slice(Math.max(0, i - k + 1), i + 1);

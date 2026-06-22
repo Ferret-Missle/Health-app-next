@@ -1,16 +1,19 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { L, D } from '@/lib/colors'
 import type { C } from '@/lib/colors'
-import { DATA, movingAvg } from '@/lib/data'
+import { movingAvg } from '@/lib/data'
+import { useHealthData } from '@/lib/useHealthData'
+import { useAuth } from '@/lib/useAuth'
 import type { Tab, State, Updater, TabProps } from '@/lib/types'
 import HomeTab from '@/components/HomeTab'
 import BalanceTab from '@/components/BalanceTab'
 import ForecastTab from '@/components/ForecastTab'
 import SettingsTab from '@/components/SettingsTab'
+import AuthGate from '@/components/AuthGate'
 
 const NAV = [
   { key: 'home'     as Tab, icon: 'home',       label: 'ホーム' },
@@ -20,13 +23,23 @@ const NAV = [
 ]
 
 export default function App() {
+  return (
+    <AuthGate>
+      <AppInner />
+    </AuthGate>
+  )
+}
+
+function AppInner() {
   const [s, setS] = useState<State>({
-    tab: 'home', dark: false, syncing: false,
+    tab: 'home', dark: false,
     gran: 'daily', view: 'cumulative', range: 30,
     tgtW: 72.0, days: 86, llm: 'groq',
     balOff: 0, grpOff: 0, calOff: 0, pfcOff: 0,
   })
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  const { data: DATA, syncing, lastSynced, sync } = useHealthData()
+  const { logout } = useAuth()
 
   const set: Updater = (patch) => setS(prev => ({ ...prev, ...patch }))
 
@@ -37,36 +50,37 @@ export default function App() {
     typography: { fontFamily: 'Roboto, "Noto Sans JP", system-ui, sans-serif' },
   })
 
-  const handleSync = () => {
-    if (s.syncing) return
-    set({ syncing: true })
-    clearTimeout(timer.current)
-    timer.current = setTimeout(() => set({ syncing: false }), 1400)
-  }
+  const handleSync = () => { void sync() }
 
-  const smoothW     = movingAvg(DATA.map(x => x.w), 7)
-  const curW        = Math.round(smoothW[smoothW.length - 1] * 10) / 10
-  const startW      = Math.round(smoothW[0] * 10) / 10
+  // Only days with a measured weight feed the weight-based stats (others are 0).
+  const weighed     = DATA.filter(x => x.w > 0)
+  const smoothW     = movingAvg(weighed.map(x => x.w), 7)
+  const curW        = smoothW.length ? Math.round(smoothW[smoothW.length - 1] * 10) / 10 : 0
+  const startW      = smoothW.length ? Math.round(smoothW[0] * 10) / 10 : 0
   const remainKg    = Math.max(0, curW - s.tgtW)
   const pct         = Math.min(100, Math.max(0, (startW - curW) / ((startW - s.tgtW) || 1) * 100))
   const dailyTarget = s.days > 0 ? Math.max(0, (curW - s.tgtW) * 7200 / s.days) : 0
   const today       = DATA[DATA.length - 1]
   const onTrack     = today.d >= dailyTarget * 0.8
 
-  const xs = DATA.map(x => x.cum)
-  const ys = DATA.map(x => x.w)
+  const xs = weighed.map(x => x.cum)
+  const ys = weighed.map(x => x.w)
   const n  = xs.length
   const mx = xs.reduce((a, b) => a + b, 0) / n
   const my = ys.reduce((a, b) => a + b, 0) / n
   let num = 0, den = 0
   for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2 }
   const slope = num / (den || 1)
-  const kVal  = slope !== 0 ? Math.round(-1 / slope / 50) * 50 : 7200
+  const kVal  = slope !== 0 && Number.isFinite(slope) ? Math.round(-1 / slope / 50) * 50 : 7200
 
   const tabTitle = { home: 'ホーム', balance: '収支', forecast: '予実', settings: '設定' }[s.tab]
   const backdrop = s.dark ? '#05140f' : '#c4cfc8'
 
-  const props: TabProps = { s, set, c, dailyTarget, curW, startW, remainKg, pct, onTrack, today, kVal }
+  const props: TabProps = { s, set, c, data: DATA, dailyTarget, curW, startW, remainKg, pct, onTrack, today, kVal }
+
+  const syncLabel = lastSynced
+    ? `最終同期 ${lastSynced.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
+    : '未同期'
 
   return (
     <ThemeProvider theme={theme}>
@@ -94,7 +108,7 @@ export default function App() {
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 22, fontWeight: 500, lineHeight: '26px', color: c.onSurf }}>{tabTitle}</div>
-              <div style={{ fontSize: 11, color: c.onSurfVar, lineHeight: '14px', marginTop: 1 }}>最終同期 14:32</div>
+              <div style={{ fontSize: 11, color: c.onSurfVar, lineHeight: '14px', marginTop: 1 }}>{syncLabel}</div>
             </div>
             <button type="button" onClick={handleSync} title="同期" style={{
               width: 44, height: 44, border: 'none', background: 'none',
@@ -103,7 +117,7 @@ export default function App() {
             }}>
               <span className="ms" style={{
                 fontSize: 22, display: 'inline-block',
-                animation: s.syncing ? 'spin 1s linear infinite' : 'none',
+                animation: syncing ? 'spin 1s linear infinite' : 'none',
               }}>sync</span>
             </button>
             <button type="button" onClick={() => set({ dark: !s.dark })} title="テーマ切替" style={{
@@ -112,6 +126,13 @@ export default function App() {
               cursor: 'pointer', color: c.onSurfVar,
             }}>
               <span className="ms" style={{ fontSize: 22 }}>{s.dark ? 'light_mode' : 'dark_mode'}</span>
+            </button>
+            <button type="button" onClick={() => { void logout() }} title="サインアウト" style={{
+              width: 44, height: 44, border: 'none', background: 'none',
+              borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', color: c.onSurfVar,
+            }}>
+              <span className="ms" style={{ fontSize: 22 }}>logout</span>
             </button>
           </div>
 

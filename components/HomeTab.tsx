@@ -1,12 +1,17 @@
 'use client'
 
 import type { TabProps } from '@/lib/types'
-import { DATA } from '@/lib/data'
+import { useAdvice } from '@/lib/useAdvice'
 
-export default function HomeTab({ s, c, dailyTarget, curW, remainKg, pct, onTrack, today }: TabProps) {
+export default function HomeTab({ s, c, data, dailyTarget, curW, remainKg, pct, onTrack, today, kVal }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
+  const { status, advice, quota, error, ask } = useAdvice()
 
-  const last7  = DATA.slice(-7)
+  const exhausted = status === 'exhausted' || (quota?.exhausted ?? false)
+  const loading   = status === 'loading'
+  const askAdvice = () => ask({ tgtW: s.tgtW, days: s.days, k: kVal, provider: s.llm })
+
+  const last7  = data.slice(-7)
   const sumW   = last7.reduce((a, b) => a + b.d, 0)
 
   const W = 348, H = 60, p = 6
@@ -118,22 +123,42 @@ export default function HomeTab({ s, c, dailyTarget, curW, remainKg, pct, onTrac
           <span className="ms" style={{ fontSize: 24, color: c.onPrimaryC }}>auto_awesome</span>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: c.onPrimaryC, marginBottom: 4 }}>AIアドバイザー</div>
-            <div style={{ fontSize: 12.5, lineHeight: '18px', color: c.onPrimaryC, opacity: .9 }}>
-              直近1週間は平日に黒字が安定。週末の摂取オーバーが目標達成日の遅れ要因です。
+            <div style={{ fontSize: 12.5, lineHeight: '19px', color: c.onPrimaryC, opacity: .9, whiteSpace: 'pre-wrap' }}>
+              {loading
+                ? 'データを分析しています…'
+                : status === 'done' && advice
+                  ? advice
+                  : status === 'error'
+                    ? `生成に失敗しました: ${error ?? '不明なエラー'}`
+                    : exhausted
+                      ? '本日のGroq無料クォータを使い切りました。深夜にリセットされます。設定からBYOK(自分のAPIキー)に切り替えるとすぐ利用できます。'
+                      : '直近1週間の食事・運動・体重の予実乖離をもとに、改善ポイントを提案します。'}
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <button type="button" style={{
-            border: 'none', borderRadius: 999, background: c.primary, color: c.onPrimary,
+          <button type="button" onClick={askAdvice} disabled={loading || exhausted} style={{
+            border: 'none', borderRadius: 999,
+            background: (loading || exhausted) ? c.surfHighest : c.primary,
+            color: (loading || exhausted) ? c.onSurfVar : c.onPrimary,
             height: 48, fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            cursor: (loading || exhausted) ? 'not-allowed' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
-            <span className="ms" style={{ fontSize: 20 }}>auto_awesome</span>アドバイスをもらう
+            <span className="ms" style={{ fontSize: 20, animation: loading ? 'spin 1s linear infinite' : 'none' }}>
+              {loading ? 'progress_activity' : 'auto_awesome'}
+            </span>
+            {loading ? '生成中…' : status === 'done' ? 'もう一度もらう' : 'アドバイスをもらう'}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', fontSize: 11, color: c.onPrimaryC, opacity: .85 }}>
             <span className="ms" style={{ fontSize: 14 }}>bolt</span>
-            <span style={{ fontFeatureSettings: '"tnum"' }}>本日あと約 4 回</span>
+            <span style={{ fontFeatureSettings: '"tnum"' }}>
+              {s.llm === 'byok'
+                ? 'BYOK(自分のAPIキー)を使用'
+                : quota
+                  ? exhausted ? '本日のクォータを使い切りました' : `本日あと約 ${quota.remaining} 回 ・ 深夜にリセット`
+                  : 'クォータを確認中…'}
+            </span>
           </div>
         </div>
       </div>

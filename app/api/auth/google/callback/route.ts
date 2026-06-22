@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { sql } from '@/lib/db'
+import { encrypt, encryptNullable } from '@/lib/crypto'
 
 interface TokenResponse {
   access_token:  string
@@ -41,13 +42,15 @@ export async function GET(req: NextRequest) {
   }
 
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+  const encAccess  = encrypt(tokens.access_token)
+  const encRefresh = encryptNullable(tokens.refresh_token ?? null)
 
   await sql`
     INSERT INTO oauth_tokens (provider, access_token, refresh_token, expires_at)
-    VALUES ('google', ${tokens.access_token}, ${tokens.refresh_token ?? null}, ${expiresAt})
+    VALUES ('google', ${encAccess}, ${encRefresh}, ${expiresAt})
     ON CONFLICT (provider) DO UPDATE SET
-      access_token  = ${tokens.access_token},
-      refresh_token = COALESCE(${tokens.refresh_token ?? null}, oauth_tokens.refresh_token),
+      access_token  = ${encAccess},
+      refresh_token = COALESCE(${encRefresh}, oauth_tokens.refresh_token),
       expires_at    = ${expiresAt},
       updated_at    = NOW()
   `

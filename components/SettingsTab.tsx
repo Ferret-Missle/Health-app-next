@@ -1,9 +1,20 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import type { TabProps } from '@/lib/types'
+import type { QuotaInfo } from '@/lib/useAdvice'
+import { authFetch } from '@/lib/authFetch'
 
 export default function SettingsTab({ s, set, c, curW }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
+
+  const [quota, setQuota] = useState<QuotaInfo | null>(null)
+  useEffect(() => {
+    authFetch('/api/advice', { cache: 'no-store' })
+      .then(r => r.json())
+      .then((d: { quota?: QuotaInfo }) => { if (d.quota) setQuota(d.quota) })
+      .catch(() => {})
+  }, [])
 
   const need     = Math.max(0, curW - s.tgtW) * 7200
   const dailyT   = s.days > 0 ? need / s.days : 0
@@ -143,7 +154,13 @@ export default function SettingsTab({ s, set, c, curW }: TabProps) {
             background: c.surf, padding: '12px 14px', borderRadius: 12,
           }}>
             <span className="ms" style={{ fontSize: 18 }}>bolt</span>
-            <span style={{ fontFeatureSettings: '"tnum"' }}>本日の残りクォータ 本日あと約 4 回 ・ 深夜にリセット</span>
+            <span style={{ fontFeatureSettings: '"tnum"' }}>
+              {quota
+                ? quota.exhausted
+                  ? '本日のクォータを使い切りました ・ 深夜にリセット'
+                  : `本日あと約 ${quota.remaining} 回 ・ 深夜にリセット`
+                : 'クォータを確認中…'}
+            </span>
           </div>
         )}
       </div>

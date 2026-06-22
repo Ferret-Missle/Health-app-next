@@ -6,7 +6,6 @@ export type Tab = 'home' | 'balance' | 'forecast' | 'settings'
 export interface State {
   tab:      Tab
   dark:     boolean
-  syncing:  boolean
   gran:     'daily' | 'weekly'
   view:     'cumulative' | 'daily'
   range:    number       // 7 | 30 | 0 (all)
@@ -25,6 +24,7 @@ export interface TabProps {
   s:           State
   set:         Updater
   c:           C
+  data:        DayData[]
   dailyTarget: number
   curW:        number
   startW:      number

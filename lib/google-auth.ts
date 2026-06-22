@@ -1,4 +1,5 @@
 import { sql } from './db'
+import { encrypt, decrypt } from './crypto'
 
 interface TokenRow {
   access_token: string
@@ -16,7 +17,9 @@ export async function getGoogleAccessToken(): Promise<string> {
 
   if (rows.length === 0) throw new Error('Google not connected')
 
-  const { access_token, refresh_token, expires_at } = rows[0]
+  const access_token  = decrypt(rows[0].access_token)!
+  const refresh_token = decrypt(rows[0].refresh_token)
+  const { expires_at } = rows[0]
 
   if (new Date(expires_at).getTime() - Date.now() > 5 * 60 * 1000) {
     return access_token
@@ -45,7 +48,7 @@ export async function getGoogleAccessToken(): Promise<string> {
 
   await sql`
     UPDATE oauth_tokens
-    SET access_token = ${data.access_token},
+    SET access_token = ${encrypt(data.access_token)},
         expires_at   = ${newExpiry},
         updated_at   = NOW()
     WHERE provider = 'google'
