@@ -14,6 +14,8 @@ export interface DayData {
   f: number;     // fat g
   cc: number;    // carbs g
   cum: number;   // cumulative balance
+  steps?: number;  // optional: only populated from DB rows (not seed mock)
+  sleep?: number;  // optional: sleep minutes, from DB rows
 }
 
 function gen(): DayData[] {
@@ -102,6 +104,8 @@ export function rowsToDayData(rows: DailyRow[]): DayData[] {
       f:  num(r.f_g),
       cc: num(r.c_g),
       cum,
+      steps: num(r.steps),
+      sleep: num(r.sleep_min),
     };
   });
 }

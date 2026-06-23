@@ -53,8 +53,10 @@ export async function chat(messages: LlmMessage[], cfg: LlmConfig = {}): Promise
     body: JSON.stringify({
       model,
       messages,
-      temperature: 0.4,
-      max_tokens:  600,
+      // Low temperature for consistency: the same week's data should yield
+      // stable advice rather than a different angle each run.
+      temperature: 0.2,
+      max_tokens:  700,
     }),
   })
 

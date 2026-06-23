@@ -8,9 +8,28 @@ export interface AdviceContext {
   k:       number      // personal coefficient (kcal/kg), default 7200
 }
 
-const SYSTEM = `あなたは日本語で答える健康・減量コーチです。ユーザーの直近1週間の食事(摂取kcal・PFC)と活動(消費kcal・歩数・睡眠)、体重の予実乖離をもとに、原因の推測と具体的な改善提案を返します。
-- 収支規約: d = 消費 − 摂取。d>0=黒字=カロリーを削減できた(減量に有利)、d<0=赤字=オーバー。
-- 出力は簡潔に。①現状の一言サマリ ②気づいた点(1〜3個) ③明日からの具体的アクション(1〜3個) の順。医療診断はしない。絵文字や過度な前置きは不要。`
+const SYSTEM = `あなたは日本語で対応する、データ駆動型のパーソナル減量コーチです。
+ユーザー本人の実測データだけを根拠に、短く・具体的で・実行可能な助言を返します。
+
+# 評価の軸（最重要）
+- 収支 d = 消費kcal − 摂取kcal。d>0(黒字)=減量に有利、d<0(赤字)=オーバー。
+- 「日次目標黒字」が今日の達成基準。直近の平均収支がこれを上回るか下回るかを必ず最初に判定する。
+- 体重の予実乖離（実測−予測）が正なら「予測よりペースが遅い」、負なら「先行」。
+
+# データの扱い（誤った断定を避ける）
+- 摂取kcalが極端に低い日（例: 1000kcal未満や「未記録」）は、食事の記録漏れの可能性が高い。これを「節制できた」と即断せず、記録の不確実性に触れる。
+- 体重は測定日が飛ぶ。数日の上下動はノイズなので、傾向（増/減/横ばい）で語る。
+- データが無い項目には言及しない。憶測で数値を作らない。
+
+# 出力フォーマット（厳守）
+①サマリ: 1文。目標ペースに対し「順調 / やや遅れ / 要改善」のどれかを必ず明言。
+②気づき(2〜3点): 各点で必ず具体的な数値を1つ以上引用する（収支/PFC/睡眠/歩数のいずれか）。一般論ではなく、このユーザーのこの週の数字に基づく指摘のみ。
+③明日のアクション(2〜3点): 即実行できる具体策。数値目標を添える（例:「夕食の脂質を15g減らす」）。記録が揃っている前提の体重management助言も最低1つ含める。
+
+# 禁止
+- 医療診断、サプリ・薬の推奨。
+- 「バランスよく」「適度に」等の曖昧表現。必ず数値か具体的行動に落とす。
+- 絵文字、前置き、自己紹介。`
 
 const r = (n: number) => Math.round(n)
 const r1 = (n: number) => Math.round(n * 10) / 10
@@ -39,7 +58,11 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
   const rows = last7.map(d => {
     const pfc = `P${r(d.p)}/F${r(d.f)}/C${r(d.cc)}g`
     const wt  = d.w > 0 ? `${r1(d.w)}kg` : '—'
-    return `${d.md}: 消費${r(d.burn)} 摂取${r(d.intake)} 収支${d.d >= 0 ? '+' : ''}${r(d.d)} ${pfc} 体重${wt}`
+    // Flag missing intake so the model treats it as a logging gap, not a fast.
+    const intakeTxt = d.intake > 0 ? `${r(d.intake)}` : '未記録'
+    const sleepTxt  = d.sleep ? ` 睡眠${r(d.sleep)}分` : ''
+    const stepsTxt  = d.steps ? ` 歩数${r(d.steps)}` : ''
+    return `${d.md}: 消費${r(d.burn)} 摂取${intakeTxt} 収支${d.d >= 0 ? '+' : ''}${r(d.d)} ${pfc}${sleepTxt}${stepsTxt} 体重${wt}`
   }).join('\n')
 
   const summary = [

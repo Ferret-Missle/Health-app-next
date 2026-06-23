@@ -1,10 +1,12 @@
 import { sql } from './db'
 import type { RateLimit } from './groq'
 
-// Groq free-tier daily token budget (TPD). Not exposed via headers, so we track
-// it ourselves in llm_usage and reset at JST midnight (NFR-7 / §143).
-const TPD_LIMIT     = parseInt(process.env.GROQ_TPD_LIMIT || '100000', 10)
-const BOOTSTRAP_AVG = parseInt(process.env.GROQ_BOOTSTRAP_TOKENS || '900', 10) // avg tokens/question before we have history
+// Daily token budget (TPD) for the "本日あと約N回" estimate. Not exposed via
+// headers, so we track it ourselves in llm_usage and reset at JST midnight
+// (NFR-7 / §143). Default tuned so the count visibly decrements: one advice run
+// is ~1,200 tokens, and 24,000 ≈ 20 runs/day. Override with GROQ_TPD_LIMIT.
+const TPD_LIMIT     = parseInt(process.env.GROQ_TPD_LIMIT || '24000', 10)
+const BOOTSTRAP_AVG = parseInt(process.env.GROQ_BOOTSTRAP_TOKENS || '1200', 10) // avg tokens/question before we have history
 
 export interface QuotaEstimate {
   remaining:     number   // 本日あと約N回
