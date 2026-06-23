@@ -132,18 +132,15 @@ function AppInner() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <div style={{
-        minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
-        background: backdrop, padding: '22px 12px',
+      <div className="app-backdrop" style={{
+        display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
+        background: backdrop,
         fontFamily: '"Noto Sans JP", Roboto, system-ui, sans-serif',
         transition: 'background .3s',
       }}>
-        <div style={{
-          width: 412, maxWidth: '100%', height: 868,
+        <div className="app-frame" style={{
           background: c.surface, color: c.onSurf,
-          borderRadius: 34, overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
-          boxShadow: '0 18px 50px rgba(0,0,0,.32),0 0 0 1px rgba(0,0,0,.04)',
           position: 'relative',
         }}>
 

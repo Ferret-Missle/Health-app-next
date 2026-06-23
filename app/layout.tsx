@@ -1,10 +1,18 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v16-appRouter'
 import './globals.css'
 
 export const metadata: Metadata = {
   title: '健康管理',
   description: '個人カロリー収支・体重管理アプリ',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // Lock zoom so the layout always matches the physical screen width on phones.
+  maximumScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

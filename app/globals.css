@@ -29,6 +29,41 @@ a {
   flex-shrink: 0;
 }
 
+/* App shell.
+   Desktop (and tablets ≥480px): show the phone-frame mockup centered on a
+   backdrop — fixed 412×868 card with rounded corners and a drop shadow.
+   Phones (<480px): fill the real device screen edge-to-edge so the layout
+   matches the physical viewport (no floating frame, no clipped height). */
+.app-backdrop {
+  min-height: 100vh;
+  min-height: 100dvh; /* account for mobile browser UI bars */
+  padding: 22px 12px;
+}
+.app-frame {
+  width: 412px;
+  max-width: 100%;
+  height: 868px;
+  border-radius: 34px;
+  overflow: hidden;
+  box-shadow: 0 18px 50px rgba(0,0,0,.32), 0 0 0 1px rgba(0,0,0,.04);
+}
+
+@media (max-width: 479.98px) {
+  .app-backdrop {
+    padding: 0;
+    /* safe-area insets so content clears notches / home indicators */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .app-frame {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
 .scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(0,0,0,.12) transparent;
