@@ -48,13 +48,28 @@ export async function requireOwner(req: Request): Promise<DecodedIdToken> {
   let decoded: DecodedIdToken
   try {
     decoded = await getAuth(adminApp()).verifyIdToken(match[1])
-  } catch {
+  } catch (e) {
+    // DIAGNOSTIC (temporary): surface why verification failed + project mismatch.
+    // No secrets logged — only project ids and the error message.
+    let saProject = '(unparsed)'
+    try { saProject = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}').project_id ?? '(none)' }
+    catch { saProject = '(SA JSON parse failed)' }
+    // The token's intended project is its `aud` claim (decode without verifying).
+    let tokenAud = '(none)'
+    try { tokenAud = JSON.parse(Buffer.from(match[1].split('.')[1] || '', 'base64').toString()).aud ?? '(none)' }
+    catch { /* ignore */ }
+    console.error('[AUTH-DIAG] verifyIdToken failed:', (e as Error).message,
+      '| SA.project_id =', saProject, '| token.aud =', tokenAud,
+      '| ALLOWED_UID set =', !!process.env.ALLOWED_UID)
     throw new AuthError('Invalid or expired token', 401)
   }
 
   const allowed = process.env.ALLOWED_UID
   if (!allowed) throw new AuthError('ALLOWED_UID is not configured', 500)
-  if (decoded.uid !== allowed) throw new AuthError('Not authorized', 403)
+  if (decoded.uid !== allowed) {
+    console.error('[AUTH-DIAG] UID mismatch: token.uid =', decoded.uid, '| ALLOWED_UID =', allowed)
+    throw new AuthError('Not authorized', 403)
+  }
 
   return decoded
 }
