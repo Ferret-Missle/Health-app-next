@@ -127,3 +127,9 @@ export function daysUntil(tgtDate: string, now: Date = new Date()): number {
   const diff = Math.round((target - todayJst) / 86400000)
   return Math.max(1, diff)
 }
+
+/** Safe `.toFixed`: tolerates undefined/null/NaN (renders as 0) so a missing
+ *  value never crashes the whole render tree. */
+export function fx(n: number | null | undefined, digits = 1): string {
+  return (typeof n === 'number' && Number.isFinite(n) ? n : 0).toFixed(digits)
+}

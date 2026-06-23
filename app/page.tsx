@@ -16,6 +16,7 @@ import BalanceTab from '@/components/BalanceTab'
 import ForecastTab from '@/components/ForecastTab'
 import SettingsTab from '@/components/SettingsTab'
 import AuthGate from '@/components/AuthGate'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 const NAV = [
   { key: 'home'     as Tab, icon: 'home',       label: 'ホーム' },
@@ -26,9 +27,11 @@ const NAV = [
 
 export default function App() {
   return (
-    <AuthGate>
-      <AppInner />
-    </AuthGate>
+    <ErrorBoundary>
+      <AuthGate>
+        <AppInner />
+      </AuthGate>
+    </ErrorBoundary>
   )
 }
 

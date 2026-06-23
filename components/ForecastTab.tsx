@@ -1,7 +1,7 @@
 'use client'
 
 import type { TabProps } from '@/lib/types'
-import { movingAvg, type DayData } from '@/lib/data'
+import { movingAvg, fx, type DayData } from '@/lib/data'
 import type { C } from '@/lib/colors'
 import InfoTip from './InfoTip'
 
@@ -38,7 +38,7 @@ function WeightTrendChart({ d, tgtW, c }: { d: DayData[], tgtW: number, c: C }) 
           <g key={k2}>
             <line x1={pl} x2={W - pr} y1={y} y2={y} stroke={c.grid} strokeWidth={1} />
             <text x={pl - 5} y={y + 3} textAnchor="end" fill={c.onSurfVar} fontSize={8.5}
-              fontFamily="Roboto, sans-serif" style={{ fontFeatureSettings: '"tnum"' }}>{v.toFixed(1)}</text>
+              fontFamily="Roboto, sans-serif" style={{ fontFeatureSettings: '"tnum"' }}>{fx(v)}</text>
           </g>
         )
       })}
@@ -46,7 +46,7 @@ function WeightTrendChart({ d, tgtW, c }: { d: DayData[], tgtW: number, c: C }) 
 
       {/* goal reference line */}
       <line x1={pl} x2={W - pr} y1={Y(tgtW)} y2={Y(tgtW)} stroke={c.onSurfVar} strokeWidth={1.4} strokeDasharray="5 4" />
-      <text x={W - pr} y={Y(tgtW) - 4} textAnchor="end" fill={c.onSurfVar} fontSize={8.5} fontFamily="Roboto, sans-serif">目標 {tgtW.toFixed(1)}</text>
+      <text x={W - pr} y={Y(tgtW) - 4} textAnchor="end" fill={c.onSurfVar} fontSize={8.5} fontFamily="Roboto, sans-serif">目標 {fx(tgtW)}</text>
 
       {/* measured weight line + points */}
       <polyline points={pts.map(p => `${X(p.i)},${Y(p.w)}`).join(' ')}
@@ -104,7 +104,7 @@ function TrajectoryChart({ d, tgtW, days, k, c }: { d: DayData[], tgtW: number, 
           <g key={k2}>
             <line x1={pl} x2={W - pr} y1={y} y2={y} stroke={c.grid} strokeWidth={1} />
             <text x={pl - 5} y={y + 3} textAnchor="end" fill={c.onSurfVar} fontSize={9}
-              fontFamily="Roboto" style={{ fontFeatureSettings: '"tnum"' }}>{v.toFixed(1)}</text>
+              fontFamily="Roboto" style={{ fontFeatureSettings: '"tnum"' }}>{fx(v)}</text>
           </g>
         )
       })}
@@ -143,7 +143,7 @@ function TrajectoryChart({ d, tgtW, days, k, c }: { d: DayData[], tgtW: number, 
         )
       })}
       <text x={X(horizon - 1)} y={Y(tgtW) - 6} textAnchor="end"
-        fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">目標 {tgtW.toFixed(1)}</text>
+        fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">目標 {fx(tgtW)}</text>
     </svg>
   )
 }
@@ -174,7 +174,7 @@ function ScatterChart({ d, c }: { d: DayData[], kVal: number, c: C }) {
         return (
           <g key={k}>
             <line x1={pl} x2={W - pr} y1={y} y2={y} stroke={c.grid} strokeWidth={1} />
-            <text x={pl - 5} y={y + 3} textAnchor="end" fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">{v.toFixed(1)}</text>
+            <text x={pl - 5} y={y + 3} textAnchor="end" fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">{fx(v)}</text>
           </g>
         )
       })}

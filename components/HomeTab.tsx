@@ -3,6 +3,7 @@
 import type { TabProps } from '@/lib/types'
 import { useAdvice } from '@/lib/useAdvice'
 import { getByokKey } from '@/lib/byok'
+import { fx } from '@/lib/data'
 import InfoTip from './InfoTip'
 
 export default function HomeTab({ s, c, data, daysLeft, dailyTarget, curW, remainKg, pct, onTrack, today, kVal, weeklyAdvice }: TabProps) {
@@ -98,7 +99,7 @@ export default function HomeTab({ s, c, data, daysLeft, dailyTarget, curW, remai
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14 }}>
           <div>
-            <div style={{ fontSize: 32, fontWeight: 500, fontFeatureSettings: '"tnum"', lineHeight: '34px' }}>残り {remainKg.toFixed(1)}</div>
+            <div style={{ fontSize: 32, fontWeight: 500, fontFeatureSettings: '"tnum"', lineHeight: '34px' }}>残り {fx(remainKg)}</div>
             <div style={{ fontSize: 12, color: c.onSurfVar, marginTop: 2 }}>kg</div>
           </div>
           <div style={{ width: 1, height: 30, background: c.outlineVar, opacity: .6, marginBottom: 14 }} />
@@ -111,8 +112,8 @@ export default function HomeTab({ s, c, data, daysLeft, dailyTarget, curW, remai
           <div style={{ height: '100%', borderRadius: 999, background: c.primary, width: `${Math.round(pct)}%`, transition: 'width .4s' }} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7, fontSize: 11, fontFeatureSettings: '"tnum"', color: c.onSurfVar }}>
-          <span>現在 {curW.toFixed(1)} kg</span>
-          <span>目標 {s.tgtW.toFixed(1)} kg</span>
+          <span>現在 {fx(curW)} kg</span>
+          <span>目標 {fx(s.tgtW)} kg</span>
         </div>
       </div>
 

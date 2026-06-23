@@ -9,6 +9,7 @@ import type { TabProps } from '@/lib/types'
 import type { QuotaInfo } from '@/lib/useAdvice'
 import { authFetch } from '@/lib/authFetch'
 import { getByokKey, setByokKey } from '@/lib/byok'
+import { fx } from '@/lib/data'
 
 export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSynced, sync }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
@@ -104,14 +105,14 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
             <span className="ms" style={{ fontSize: 18, color: c.primary }}>monitor_weight</span>
             <span style={{ fontSize: 13, color: c.onSurfVar }}>現在の体重(最新の取得値)</span>
           </div>
-          <span style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>{curW.toFixed(1)} kg</span>
+          <span style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>{fx(curW)} kg</span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 6px' }}>
           <span style={{ fontSize: 13, color: c.onSurfVar }}>目標体重</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {stepBtn(() => set({ tgtW: Math.max(50, Math.round((s.tgtW - 0.5) * 2) / 2) }), 'remove', c)}
-            <span style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"', minWidth: 64, textAlign: 'center' }}>{s.tgtW.toFixed(1)} kg</span>
+            <span style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"', minWidth: 64, textAlign: 'center' }}>{fx(s.tgtW)} kg</span>
             {stepBtn(() => set({ tgtW: Math.min(90, Math.round((s.tgtW + 0.5) * 2) / 2) }), 'add', c)}
           </div>
         </div>
@@ -159,7 +160,7 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             {[
-              { label: '週あたり',     value: `約${Math.abs(weekly).toFixed(2)}`, unit: 'kg' },
+              { label: '週あたり',     value: `約${fx(Math.abs(weekly), 2)}`, unit: 'kg' },
               { label: '目標まで',     value: `約${Math.round(daysLeft / 7)}`,    unit: '週' },
               { label: '日次目標黒字', value: `+${fmt(dailyT)}`,                  unit: 'kcal' },
             ].map(m => (
