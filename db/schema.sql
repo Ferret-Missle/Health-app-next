@@ -41,3 +41,32 @@ CREATE TABLE IF NOT EXISTS llm_usage (
 );
 
 CREATE INDEX IF NOT EXISTS llm_usage_date_idx ON llm_usage (DATE(used_at AT TIME ZONE 'Asia/Tokyo'));
+
+-- AI advice history (FR-4.4). kind = 'manual' | 'weekly'. week_start is the JST
+-- Sunday that anchors a weekly auto-run, so we run the weekly advice at most once
+-- per week (the "skip if already done this week" catch-up check).
+CREATE TABLE IF NOT EXISTS advice_log (
+  id         SERIAL      PRIMARY KEY,
+  kind       TEXT        NOT NULL DEFAULT 'manual',
+  week_start DATE,                              -- set for kind = 'weekly'
+  advice     TEXT        NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- At most one weekly run per week.
+CREATE UNIQUE INDEX IF NOT EXISTS advice_log_weekly_uniq
+  ON advice_log (week_start) WHERE kind = 'weekly';
+
+-- User goal/preferences. Single-user app: one row pinned to id = 1.
+CREATE TABLE IF NOT EXISTS user_settings (
+  id          INTEGER     PRIMARY KEY DEFAULT 1,
+  target_kg   NUMERIC(5,2) NOT NULL DEFAULT 72.0,
+  target_days INTEGER     NOT NULL DEFAULT 86,   -- legacy, superseded by target_date
+  target_date DATE,                              -- absolute goal date; days-left is derived from it
+  llm         TEXT        NOT NULL DEFAULT 'groq',
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT user_settings_singleton CHECK (id = 1)
+);
+
+-- Add target_date to pre-existing tables (idempotent).
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS target_date DATE;

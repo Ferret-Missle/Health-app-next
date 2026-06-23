@@ -112,3 +112,18 @@ export function movingAvg(arr: number[], k: number): number[] {
     return a.reduce((s, v) => s + v, 0) / a.length;
   });
 }
+
+/**
+ * Days remaining until a goal date (YYYY-MM-DD), measured in whole JST calendar
+ * days. Clamped to a minimum of 1 so past-due dates don't break daily-target /
+ * trajectory math (we treat an overdue goal as "1 day left").
+ */
+export function daysUntil(tgtDate: string, now: Date = new Date()): number {
+  const target = new Date(`${tgtDate}T00:00:00+09:00`).getTime()
+  // Start of today in JST.
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  jst.setUTCHours(0, 0, 0, 0)
+  const todayJst = jst.getTime() - 9 * 60 * 60 * 1000
+  const diff = Math.round((target - todayJst) / 86400000)
+  return Math.max(1, diff)
+}

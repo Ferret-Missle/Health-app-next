@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { sql } from '@/lib/db'
 import { encrypt, encryptNullable } from '@/lib/crypto'
+import { timingSafeEq, GOOGLE_STATE_COOKIE } from '@/lib/oauth-state'
+import { appBaseUrl } from '@/lib/app-url'
 
 interface TokenResponse {
   access_token:  string
@@ -14,10 +16,17 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const code  = searchParams.get('code')
   const error = searchParams.get('error')
-  const base  = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const state = searchParams.get('state')
+  const base  = appBaseUrl()
 
   if (error || !code) {
     return NextResponse.redirect(`${base}/?auth_error=${error ?? 'no_code'}`)
+  }
+
+  // CSRF: the state must match the cookie our owner-guarded start route set.
+  const cookieState = req.cookies.get(GOOGLE_STATE_COOKIE)?.value
+  if (!state || !cookieState || !timingSafeEq(state, cookieState)) {
+    return NextResponse.redirect(`${base}/?auth_error=state_mismatch`)
   }
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -55,5 +64,7 @@ export async function GET(req: NextRequest) {
       updated_at    = NOW()
   `
 
-  return NextResponse.redirect(`${base}/?auth=success`)
+  const res = NextResponse.redirect(`${base}/?auth=success`)
+  res.cookies.delete(GOOGLE_STATE_COOKIE)
+  return res
 }

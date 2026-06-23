@@ -6,16 +6,17 @@ export type Tab = 'home' | 'balance' | 'forecast' | 'settings'
 export interface State {
   tab:      Tab
   dark:     boolean
-  gran:     'daily' | 'weekly'
   view:     'cumulative' | 'daily'
   range:    number       // 7 | 30 | 0 (all)
   tgtW:     number
-  days:     number
+  tgtDate:  string       // goal date 'YYYY-MM-DD'; days-left is derived from it
   llm:      'groq' | 'byok'
   balOff:   number
   grpOff:   number
   calOff:   number
   pfcOff:   number
+  wRange:   number       // weight chart window: 30 | 90 | 0 (all)
+  wOff:     number       // weight chart period offset (0 = latest)
 }
 
 export type Updater = (patch: Partial<State>) => void
@@ -25,6 +26,7 @@ export interface TabProps {
   set:         Updater
   c:           C
   data:        DayData[]
+  daysLeft:    number     // derived: max(1, target_date − today JST)
   dailyTarget: number
   curW:        number
   startW:      number
@@ -33,4 +35,9 @@ export interface TabProps {
   onTrack:     boolean
   today:       DayData
   kVal:        number
+  kInfo:       { calibrated: boolean; daysShort: number; spanShort: number; outOfRange: boolean }
+  syncing:     boolean
+  lastSynced:  Date | null
+  sync:        (days?: number) => Promise<void>
+  weeklyAdvice: string | null   // FR-4.4: this week's auto-generated advice, if any
 }

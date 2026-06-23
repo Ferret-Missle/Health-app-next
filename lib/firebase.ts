@@ -3,6 +3,7 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app'
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut,
+  onAuthStateChanged,
   type Auth, type User,
 } from 'firebase/auth'
 
@@ -36,9 +37,18 @@ export function signOut(): Promise<void> {
   return fbSignOut(getFirebaseAuth())
 }
 
+/** Resolve once Firebase has restored the persisted auth state. */
+function waitForUser(): Promise<User | null> {
+  const auth = getFirebaseAuth()
+  if (auth.currentUser) return Promise.resolve(auth.currentUser)
+  return new Promise(resolve => {
+    const unsub = onAuthStateChanged(auth, u => { unsub(); resolve(u) })
+  })
+}
+
 /** Fresh ID token for the current user, or null if signed out. */
 export async function getIdToken(): Promise<string | null> {
-  const user = getFirebaseAuth().currentUser
+  const user = await waitForUser()
   return user ? user.getIdToken() : null
 }
 

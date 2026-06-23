@@ -1,4 +1,6 @@
-import { NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
+import { ownerGuard } from '@/lib/firebase-admin'
+import { randomState, setStateCookie, GOOGLE_STATE_COOKIE } from '@/lib/oauth-state'
 
 // Google Health API scopes (replaces legacy Google Fit fitness.* scopes).
 // steps + total-calories → activity_and_fitness; heart-rate → health_metrics; sleep → sleep.
@@ -8,7 +10,13 @@ const SCOPES = [
   'https://www.googleapis.com/auth/googlehealth.sleep.readonly',
 ].join(' ')
 
-export async function GET() {
+// Owner-guarded: called via authFetch (Bearer), returns the consent URL as JSON
+// for the client to navigate to. Mints a CSRF `state` checked by the callback.
+export async function GET(req: NextRequest) {
+  const denied = await ownerGuard(req)
+  if (denied) return denied
+
+  const state = randomState()
   const params = new URLSearchParams({
     client_id:     process.env.GOOGLE_CLIENT_ID!,
     redirect_uri:  process.env.GOOGLE_REDIRECT_URI!,
@@ -16,8 +24,12 @@ export async function GET() {
     scope:         SCOPES,
     access_type:   'offline',
     prompt:        'consent',
+    state,
   })
-  return NextResponse.redirect(
-    `https://accounts.google.com/o/oauth2/v2/auth?${params}`
-  )
+
+  const res = NextResponse.json({
+    url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
+  })
+  setStateCookie(res, GOOGLE_STATE_COOKIE, state)
+  return res
 }

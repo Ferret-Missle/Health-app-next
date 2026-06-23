@@ -25,5 +25,9 @@ export async function GET(req: NextRequest) {
     ORDER BY date ASC
   ` as DailyRow[]
 
-  return NextResponse.json({ rows })
+  // Latest write across all rows = last successful sync (survives reloads).
+  const meta = await sql`SELECT MAX(updated_at) AS last_synced FROM daily_data` as { last_synced: string | null }[]
+  const lastSynced = meta[0]?.last_synced ?? null
+
+  return NextResponse.json({ rows, lastSynced })
 }

@@ -5,9 +5,11 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { L, D } from '@/lib/colors'
 import type { C } from '@/lib/colors'
-import { movingAvg } from '@/lib/data'
+import { movingAvg, daysUntil } from '@/lib/data'
 import { useHealthData } from '@/lib/useHealthData'
 import { useAuth } from '@/lib/useAuth'
+import { useSettings } from '@/lib/useSettings'
+import { useWeeklyAdvice } from '@/lib/useWeeklyAdvice'
 import type { Tab, State, Updater, TabProps } from '@/lib/types'
 import HomeTab from '@/components/HomeTab'
 import BalanceTab from '@/components/BalanceTab'
@@ -33,15 +35,28 @@ export default function App() {
 function AppInner() {
   const [s, setS] = useState<State>({
     tab: 'home', dark: false,
-    gran: 'daily', view: 'cumulative', range: 30,
-    tgtW: 72.0, days: 86, llm: 'groq',
+    view: 'cumulative', range: 30,
+    tgtW: 72.0, tgtDate: '', llm: 'groq',
     balOff: 0, grpOff: 0, calOff: 0, pfcOff: 0,
+    wRange: 90, wOff: 0,
   })
 
-  const { data: DATA, syncing, lastSynced, sync } = useHealthData()
+  const { data: DATA, syncing, progress, lastSynced, sync } = useHealthData()
   const { logout } = useAuth()
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   const set: Updater = (patch) => setS(prev => ({ ...prev, ...patch }))
+
+  // Persist goal settings to the cloud; load stored values on mount.
+  useSettings(
+    { tgtW: s.tgtW, tgtDate: s.tgtDate, llm: s.llm },
+    loaded => { set({ tgtW: loaded.tgtW, tgtDate: loaded.tgtDate, llm: loaded.llm }); setSettingsLoaded(true) },
+  )
+
+  // Days remaining is DERIVED from the goal date, so it counts down over time
+  // and keeps the balance-target line correct. Falls back to a sane horizon
+  // before settings load (tgtDate is still '').
+  const daysLeft = s.tgtDate ? daysUntil(s.tgtDate) : 86
 
   const c: C = s.dark ? D : L
 
@@ -59,7 +74,7 @@ function AppInner() {
   const startW      = smoothW.length ? Math.round(smoothW[0] * 10) / 10 : 0
   const remainKg    = Math.max(0, curW - s.tgtW)
   const pct         = Math.min(100, Math.max(0, (startW - curW) / ((startW - s.tgtW) || 1) * 100))
-  const dailyTarget = s.days > 0 ? Math.max(0, (curW - s.tgtW) * 7200 / s.days) : 0
+  const dailyTarget = daysLeft > 0 ? Math.max(0, (curW - s.tgtW) * 7200 / daysLeft) : 0
   const today       = DATA[DATA.length - 1]
   const onTrack     = today.d >= dailyTarget * 0.8
 
@@ -71,16 +86,45 @@ function AppInner() {
   let num = 0, den = 0
   for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2 }
   const slope = num / (den || 1)
-  const kVal  = slope !== 0 && Number.isFinite(slope) ? Math.round(-1 / slope / 50) * 50 : 7200
+
+  // Personal coefficient k (kcal per kg). Calibrate from the regression only once
+  // there's enough signal (≥3 weeks span, ≥10 weighed days) AND the result is
+  // physiologically plausible (~7,200 ± band). Otherwise fall back to the default
+  // 7,200 — sparse/early data produces wild slopes (e.g. k≈62,000). (§5.2)
+  const MIN_DAYS = 10, MIN_SPAN = 21
+  const spanDays = n >= 2 ? (weighed[n - 1].dt.getTime() - weighed[0].dt.getTime()) / 86400000 : 0
+  const rawK     = slope !== 0 && Number.isFinite(slope) ? -1 / slope : 0
+  const calibrated = n >= MIN_DAYS && spanDays >= MIN_SPAN && rawK >= 4000 && rawK <= 12000
+  const kVal = calibrated ? Math.round(rawK / 50) * 50 : 7200
+
+  // How much more weight data is needed before k can calibrate (for the UI hint).
+  const kInfo = {
+    calibrated,
+    daysShort: Math.max(0, MIN_DAYS - n),                  // more measured days needed
+    spanShort: Math.max(0, Math.ceil(MIN_SPAN - spanDays)), // more calendar days of span needed
+    outOfRange: n >= MIN_DAYS && spanDays >= MIN_SPAN && (rawK < 4000 || rawK > 12000),
+  }
+
+  // FR-4.4: on launch, run this week's auto-advice once (catch-up if Sunday was
+  // missed). Wait until goal settings are loaded so we pass the real target.
+  const { advice: weeklyAdvice } = useWeeklyAdvice({
+    tgtW: s.tgtW, days: daysLeft, k: kVal, provider: s.llm, ready: settingsLoaded,
+  })
 
   const tabTitle = { home: 'ホーム', balance: '収支', forecast: '予実', settings: '設定' }[s.tab]
   const backdrop = s.dark ? '#05140f' : '#c4cfc8'
 
-  const props: TabProps = { s, set, c, data: DATA, dailyTarget, curW, startW, remainKg, pct, onTrack, today, kVal }
+  const props: TabProps = { s, set, c, data: DATA, daysLeft, dailyTarget, curW, startW, remainKg, pct, onTrack, today, kVal, kInfo, syncing, lastSynced, sync, weeklyAdvice }
 
-  const syncLabel = lastSynced
-    ? `最終同期 ${lastSynced.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`
-    : '未同期'
+  const syncLabel = (() => {
+    if (!lastSynced) return '未同期'
+    const now = new Date()
+    const sameDay = lastSynced.toDateString() === now.toDateString()
+    const time = lastSynced.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+    if (sameDay) return `最終同期 ${time}`
+    const date = lastSynced.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })
+    return `最終同期 ${date} ${time}`
+  })()
 
   return (
     <ThemeProvider theme={theme}>
@@ -135,6 +179,31 @@ function AppInner() {
               <span className="ms" style={{ fontSize: 22 }}>logout</span>
             </button>
           </div>
+
+          {/* Sync progress bar (determinate, step-based). 3px track + label row. */}
+          <div style={{
+            flex: 'none', height: 3, background: syncing ? c.primaryC : 'transparent',
+            overflow: 'hidden', position: 'relative', zIndex: 5,
+          }} role="progressbar"
+            aria-valuenow={progress?.pct ?? 0} aria-valuemin={0} aria-valuemax={100} aria-label="同期の進捗">
+            {syncing && (
+              <div style={{
+                position: 'absolute', top: 0, bottom: 0, left: 0,
+                width: `${progress?.pct ?? 0}%`, background: c.primary,
+                transition: 'width .3s ease',
+              }} />
+            )}
+          </div>
+          {syncing && progress && (
+            <div style={{
+              flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '4px 16px', background: c.surface, zIndex: 5,
+              fontSize: 11, color: c.onSurfVar,
+            }}>
+              <span>{progress.label}</span>
+              <span style={{ fontFeatureSettings: '"tnum"' }}>{progress.pct}%</span>
+            </div>
+          )}
 
           {/* Scroll content */}
           <div className="scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 14px 96px' }}>

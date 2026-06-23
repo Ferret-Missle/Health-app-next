@@ -2,14 +2,25 @@
 
 import type { TabProps } from '@/lib/types'
 import { useAdvice } from '@/lib/useAdvice'
+import { getByokKey } from '@/lib/byok'
+import InfoTip from './InfoTip'
 
-export default function HomeTab({ s, c, data, dailyTarget, curW, remainKg, pct, onTrack, today, kVal }: TabProps) {
+export default function HomeTab({ s, c, data, daysLeft, dailyTarget, curW, remainKg, pct, onTrack, today, kVal, weeklyAdvice }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
   const { status, advice, quota, error, ask } = useAdvice()
+  // Show the manual result if there is one; otherwise fall back to this week's
+  // auto-generated advice (FR-4.4) so the card isn't empty on launch.
+  const shownAdvice = (status === 'done' && advice) ? advice : weeklyAdvice
 
-  const exhausted = status === 'exhausted' || (quota?.exhausted ?? false)
-  const loading   = status === 'loading'
-  const askAdvice = () => ask({ tgtW: s.tgtW, days: s.days, k: kVal, provider: s.llm })
+  const exhausted   = status === 'exhausted' || (quota?.exhausted ?? false)
+  const loading     = status === 'loading'
+  // BYOK requires an on-device key; block the button (not "exhausted") when missing.
+  const byokMissing = s.llm === 'byok' && !getByokKey()
+  const askAdvice = () => {
+    if (byokMissing) return
+    const apiKey = s.llm === 'byok' ? getByokKey() : undefined
+    ask({ tgtW: s.tgtW, days: daysLeft, k: kVal, provider: s.llm, apiKey })
+  }
 
   const last7  = data.slice(-7)
   const sumW   = last7.reduce((a, b) => a + b.d, 0)
@@ -34,7 +45,10 @@ export default function HomeTab({ s, c, data, dailyTarget, curW, remainKg, pct, 
       {/* Today KPI card */}
       <div style={{ background: c.surfLow, borderRadius: 24, padding: '22px 22px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, letterSpacing: '.1px', color: c.onSurfVar }}>今日のカロリー収支</span>
+          <span style={{ fontSize: 13, fontWeight: 500, letterSpacing: '.1px', color: c.onSurfVar, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            今日のカロリー収支
+            <InfoTip c={c} text={'収支 = 消費 − 摂取。プラス(黒字)はカロリーを削減できた日=減量に有利、マイナス(赤字)は摂りすぎた日。'} />
+          </span>
           <span style={{
             display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 600,
             padding: '4px 10px', borderRadius: 999,
@@ -67,7 +81,10 @@ export default function HomeTab({ s, c, data, dailyTarget, curW, remainKg, pct, 
       {/* Goal progress card */}
       <div style={{ background: c.surfLow, borderRadius: 24, padding: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: c.onSurfVar }}>目標達成まで</span>
+          <span style={{ fontSize: 13, fontWeight: 500, color: c.onSurfVar, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            目標達成まで
+            <InfoTip c={c} text={'目標体重まで残り何kg・残り何日かを表示。「オントラック」は今の収支ペースで目標に間に合う見込み、「要調整」はペース不足。'} />
+          </span>
           <span style={{
             display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 600,
             padding: '4px 10px 4px 8px', borderRadius: 999,
@@ -86,7 +103,7 @@ export default function HomeTab({ s, c, data, dailyTarget, curW, remainKg, pct, 
           </div>
           <div style={{ width: 1, height: 30, background: c.outlineVar, opacity: .6, marginBottom: 14 }} />
           <div>
-            <div style={{ fontSize: 32, fontWeight: 500, fontFeatureSettings: '"tnum"', lineHeight: '34px' }}>残り {s.days}</div>
+            <div style={{ fontSize: 32, fontWeight: 500, fontFeatureSettings: '"tnum"', lineHeight: '34px' }}>残り {daysLeft}</div>
             <div style={{ fontSize: 12, color: c.onSurfVar, marginTop: 2 }}>日</div>
           </div>
         </div>
@@ -126,35 +143,37 @@ export default function HomeTab({ s, c, data, dailyTarget, curW, remainKg, pct, 
             <div style={{ fontSize: 12.5, lineHeight: '19px', color: c.onPrimaryC, opacity: .9, whiteSpace: 'pre-wrap' }}>
               {loading
                 ? 'データを分析しています…'
-                : status === 'done' && advice
-                  ? advice
+                : shownAdvice
+                  ? shownAdvice
                   : status === 'error'
                     ? `生成に失敗しました: ${error ?? '不明なエラー'}`
-                    : exhausted
-                      ? '本日のGroq無料クォータを使い切りました。深夜にリセットされます。設定からBYOK(自分のAPIキー)に切り替えるとすぐ利用できます。'
-                      : '直近1週間の食事・運動・体重の予実乖離をもとに、改善ポイントを提案します。'}
+                    : byokMissing
+                      ? '設定でBYOKのAPIキーを入力すると、アドバイスを生成できます。'
+                      : exhausted
+                        ? '本日のGroq無料クォータを使い切りました。深夜にリセットされます。設定からBYOK(自分のAPIキー)に切り替えるとすぐ利用できます。'
+                        : '直近1週間の食事・運動・体重の予実乖離をもとに、改善ポイントを提案します。'}
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <button type="button" onClick={askAdvice} disabled={loading || exhausted} style={{
+          <button type="button" onClick={askAdvice} disabled={loading || exhausted || byokMissing} style={{
             border: 'none', borderRadius: 999,
-            background: (loading || exhausted) ? c.surfHighest : c.primary,
-            color: (loading || exhausted) ? c.onSurfVar : c.onPrimary,
+            background: (loading || exhausted || byokMissing) ? c.surfHighest : c.primary,
+            color: (loading || exhausted || byokMissing) ? c.onSurfVar : c.onPrimary,
             height: 48, fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
-            cursor: (loading || exhausted) ? 'not-allowed' : 'pointer',
+            cursor: (loading || exhausted || byokMissing) ? 'not-allowed' : 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
             <span className="ms" style={{ fontSize: 20, animation: loading ? 'spin 1s linear infinite' : 'none' }}>
               {loading ? 'progress_activity' : 'auto_awesome'}
             </span>
-            {loading ? '生成中…' : status === 'done' ? 'もう一度もらう' : 'アドバイスをもらう'}
+            {loading ? '生成中…' : shownAdvice ? 'もう一度もらう' : 'アドバイスをもらう'}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', fontSize: 11, color: c.onPrimaryC, opacity: .85 }}>
             <span className="ms" style={{ fontSize: 14 }}>bolt</span>
             <span style={{ fontFeatureSettings: '"tnum"' }}>
               {s.llm === 'byok'
-                ? 'BYOK(自分のAPIキー)を使用'
+                ? (byokMissing ? '設定でAPIキーを入力してください' : 'BYOK(自分のAPIキー)を使用')
                 : quota
                   ? exhausted ? '本日のクォータを使い切りました' : `本日あと約 ${quota.remaining} 回 ・ 深夜にリセット`
                   : 'クォータを確認中…'}

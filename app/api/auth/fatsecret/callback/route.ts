@@ -2,15 +2,20 @@
 // token (using the request-token-secret stashed in the cookie) and persist it.
 import { type NextRequest, NextResponse } from 'next/server'
 import { getAccessToken, saveFatSecretToken } from '@/lib/fatsecret-auth'
+import { FATSECRET_STATE_COOKIE } from '@/lib/oauth-state'
+import { appBaseUrl } from '@/lib/app-url'
 
 export async function GET(req: NextRequest) {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const base = appBaseUrl()
   const { searchParams } = req.nextUrl
   const oauthToken = searchParams.get('oauth_token')
   const verifier   = searchParams.get('oauth_verifier')
   const reqSecret  = req.cookies.get('fs_req_secret')?.value
+  // OAuth 1.0 returns no `state`, so we just confirm our state cookie is present
+  // — only our owner-guarded start route could have set this httpOnly value.
+  const stateCookie = req.cookies.get(FATSECRET_STATE_COOKIE)?.value
 
-  if (!oauthToken || !verifier || !reqSecret) {
+  if (!oauthToken || !verifier || !reqSecret || !stateCookie) {
     return NextResponse.redirect(`${base}/?fatsecret_error=missing_params`)
   }
 
@@ -25,5 +30,6 @@ export async function GET(req: NextRequest) {
 
   const res = NextResponse.redirect(`${base}/?fatsecret=success`)
   res.cookies.delete('fs_req_secret')
+  res.cookies.delete(FATSECRET_STATE_COOKIE)
   return res
 }
