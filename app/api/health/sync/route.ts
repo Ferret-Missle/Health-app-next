@@ -74,44 +74,42 @@ export async function POST(req: NextRequest) {
         errors.push(`intake: ${e instanceof Error ? e.message : String(e)}`)
       }
 
-      // Step 4: save to DB
+      // Step 4: save to DB. Merge all three sources by date into one row each, then
+      // upsert the days in parallel — Neon is in Singapore, so serial round-trips
+      // (previously up to 3×N) add up and can blow the 60s function limit. Merging
+      // by date also avoids concurrent upserts racing on the same row.
       progress(4, 'データベースに保存中…')
       try {
-        for (const d of activityData) {
-          await sql`
-            INSERT INTO daily_data (date, burn_kcal, steps, heart_rate_avg, sleep_min)
-            VALUES (${d.date}, ${d.burnKcal}, ${d.steps}, ${d.heartRateAvg}, ${d.sleepMin})
-            ON CONFLICT (date) DO UPDATE SET
-              burn_kcal      = COALESCE(${d.burnKcal},     daily_data.burn_kcal),
-              steps          = COALESCE(${d.steps},         daily_data.steps),
-              heart_rate_avg = COALESCE(${d.heartRateAvg}, daily_data.heart_rate_avg),
-              sleep_min      = COALESCE(${d.sleepMin},      daily_data.sleep_min),
-              updated_at     = NOW()
-          `
+        type Merged = {
+          date: string
+          burnKcal?: number | null; steps?: number | null; heartRateAvg?: number | null; sleepMin?: number | null
+          weightKg?: number | null; bodyFatPct?: number | null
+          intakeKcal?: number | null; pG?: number | null; fG?: number | null; cG?: number | null; foods?: string | null
         }
-        for (const d of bodyData) {
-          await sql`
-            INSERT INTO daily_data (date, weight_kg, body_fat_pct)
-            VALUES (${d.date}, ${d.weightKg}, ${d.bodyFatPct})
-            ON CONFLICT (date) DO UPDATE SET
-              weight_kg    = COALESCE(${d.weightKg},   daily_data.weight_kg),
-              body_fat_pct = COALESCE(${d.bodyFatPct}, daily_data.body_fat_pct),
-              updated_at   = NOW()
-          `
-        }
-        for (const d of intakeData) {
-          await sql`
-            INSERT INTO daily_data (date, intake_kcal, p_g, f_g, c_g, foods)
-            VALUES (${d.date}, ${d.intakeKcal}, ${d.pG}, ${d.fG}, ${d.cG}, ${d.foods})
-            ON CONFLICT (date) DO UPDATE SET
-              intake_kcal = COALESCE(${d.intakeKcal}, daily_data.intake_kcal),
-              p_g         = COALESCE(${d.pG},          daily_data.p_g),
-              f_g         = COALESCE(${d.fG},          daily_data.f_g),
-              c_g         = COALESCE(${d.cG},          daily_data.c_g),
-              foods       = COALESCE(${d.foods},       daily_data.foods),
-              updated_at  = NOW()
-          `
-        }
+        const byDate = new Map<string, Merged>()
+        const at = (date: string) => { let m = byDate.get(date); if (!m) { m = { date }; byDate.set(date, m) } return m }
+        for (const d of activityData) Object.assign(at(d.date), { burnKcal: d.burnKcal, steps: d.steps, heartRateAvg: d.heartRateAvg, sleepMin: d.sleepMin })
+        for (const d of bodyData)     Object.assign(at(d.date), { weightKg: d.weightKg, bodyFatPct: d.bodyFatPct })
+        for (const d of intakeData)   Object.assign(at(d.date), { intakeKcal: d.intakeKcal, pG: d.pG, fG: d.fG, cG: d.cG, foods: d.foods })
+
+        await Promise.all([...byDate.values()].map(d => sql`
+          INSERT INTO daily_data (date, burn_kcal, steps, heart_rate_avg, sleep_min, weight_kg, body_fat_pct, intake_kcal, p_g, f_g, c_g, foods)
+          VALUES (${d.date}, ${d.burnKcal ?? null}, ${d.steps ?? null}, ${d.heartRateAvg ?? null}, ${d.sleepMin ?? null},
+                  ${d.weightKg ?? null}, ${d.bodyFatPct ?? null}, ${d.intakeKcal ?? null}, ${d.pG ?? null}, ${d.fG ?? null}, ${d.cG ?? null}, ${d.foods ?? null})
+          ON CONFLICT (date) DO UPDATE SET
+            burn_kcal      = COALESCE(${d.burnKcal ?? null},     daily_data.burn_kcal),
+            steps          = COALESCE(${d.steps ?? null},         daily_data.steps),
+            heart_rate_avg = COALESCE(${d.heartRateAvg ?? null}, daily_data.heart_rate_avg),
+            sleep_min      = COALESCE(${d.sleepMin ?? null},      daily_data.sleep_min),
+            weight_kg      = COALESCE(${d.weightKg ?? null},      daily_data.weight_kg),
+            body_fat_pct   = COALESCE(${d.bodyFatPct ?? null},    daily_data.body_fat_pct),
+            intake_kcal    = COALESCE(${d.intakeKcal ?? null},    daily_data.intake_kcal),
+            p_g            = COALESCE(${d.pG ?? null},            daily_data.p_g),
+            f_g            = COALESCE(${d.fG ?? null},            daily_data.f_g),
+            c_g            = COALESCE(${d.cG ?? null},            daily_data.c_g),
+            foods          = COALESCE(${d.foods ?? null},         daily_data.foods),
+            updated_at     = NOW()
+        `))
       } catch (e) {
         errors.push(`save: ${e instanceof Error ? e.message : String(e)}`)
       }

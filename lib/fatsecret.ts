@@ -97,16 +97,24 @@ async function fetchOneDay(
 }
 
 // Fetch intake for [startMs, endMs) one JST day at a time (FatSecret has no range
-// query; food_entries.get is per-day). Days with no diary entries are skipped.
+// query; food_entries.get is per-day). Days are fetched in small parallel batches
+// to keep the total time well under the function timeout, while bounding
+// concurrency so we don't trip FatSecret's rate limits. Empty days are skipped.
+const FS_CONCURRENCY = 5
+
 export async function fetchIntakeData(startMs: number, endMs: number): Promise<DailyIntakeData[]> {
   const { token, secret } = await getFatSecretToken()
   const startInt = jstDateInt(startMs)
   const endInt   = jstDateInt(endMs - 1)  // inclusive last JST day
 
+  const dateInts: number[] = []
+  for (let di = startInt; di <= endInt; di++) dateInts.push(di)
+
   const out: DailyIntakeData[] = []
-  for (let di = startInt; di <= endInt; di++) {
-    const day = await fetchOneDay(di, token, secret)
-    if (day) out.push(day)
+  for (let i = 0; i < dateInts.length; i += FS_CONCURRENCY) {
+    const batch = dateInts.slice(i, i + FS_CONCURRENCY)
+    const results = await Promise.all(batch.map(di => fetchOneDay(di, token, secret)))
+    for (const day of results) if (day) out.push(day)
   }
   return out.sort((a, b) => a.date.localeCompare(b.date))
 }

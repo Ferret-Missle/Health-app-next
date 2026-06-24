@@ -80,12 +80,13 @@ async function dailyRollUp(
   startMs: number,
   endMs: number,
 ): Promise<RollupPoint[]> {
-  const all: RollupPoint[] = []
+  // Chunks cover disjoint date ranges, so fetch them in parallel.
+  const ranges: [number, number][] = []
   for (let s = startMs; s < endMs; s += MAX_ROLLUP_DAYS * DAY_MS) {
-    const e = Math.min(s + MAX_ROLLUP_DAYS * DAY_MS, endMs)
-    all.push(...await dailyRollUpChunk(accessToken, dataType, s, e))
+    ranges.push([s, Math.min(s + MAX_ROLLUP_DAYS * DAY_MS, endMs)])
   }
-  return all
+  const chunks = await Promise.all(ranges.map(([s, e]) => dailyRollUpChunk(accessToken, dataType, s, e)))
+  return chunks.flat()
 }
 
 // ── sleep via list ───────────────────────────────────────────────────────────
