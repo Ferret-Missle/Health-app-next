@@ -17,10 +17,11 @@ function dateIntToStr(dateInt: number): string {
 // food_entries.get response: { food_entries: { food_entry: entry | entry[] } }
 // or { food_entries: "" } when the day has no entries.
 interface FoodEntry {
-  calories?:     string
-  protein?:      string
-  fat?:          string
-  carbohydrate?: string
+  food_entry_name?: string
+  calories?:        string
+  protein?:         string
+  fat?:             string
+  carbohydrate?:    string
 }
 interface FoodEntriesResponse {
   food_entries?: { food_entry?: FoodEntry | FoodEntry[] } | string
@@ -38,6 +39,23 @@ export interface DailyIntakeData {
   pG:         number | null
   fG:         number | null
   cG:         number | null
+  foods:      string | null   // logged food names summarized as "name×count, …"
+}
+
+/** Summarize logged food names as "name×count, …" (most-eaten first), so advice
+ *  can reference what was actually eaten. Caps length to keep the prompt small. */
+function summarizeFoods(entries: FoodEntry[]): string | null {
+  const counts = new Map<string, number>()
+  for (const e of entries) {
+    const name = e.food_entry_name?.trim()
+    if (name) counts.set(name, (counts.get(name) ?? 0) + 1)
+  }
+  if (counts.size === 0) return null
+  const parts = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, n]) => (n > 1 ? `${name}×${n}` : name))
+  const joined = parts.join(', ')
+  return joined.length > 300 ? joined.slice(0, 297) + '…' : joined
 }
 
 async function fetchOneDay(
@@ -74,6 +92,7 @@ async function fetchOneDay(
     pG:         Math.round(p * 10) / 10,
     fG:         Math.round(f * 10) / 10,
     cG:         Math.round(c * 10) / 10,
+    foods:      summarizeFoods(entries),
   }
 }
 

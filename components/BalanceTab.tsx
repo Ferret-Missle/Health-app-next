@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import type { TabProps } from '@/lib/types'
 import { type DayData } from '@/lib/data'
 import type { C } from '@/lib/colors'
@@ -117,6 +118,10 @@ function GroupedChart({ days, dark, c }: { days: DayData[], dark: boolean, c: C 
   const stripe = dark ? 'rgba(10,14,12,0.6)' : 'rgba(255,255,255,0.6)'
   const axisY = pt + ih
 
+  // Tap a day to pop its exact intake/burn values.
+  const [sel, setSel] = useState<number | null>(null)
+  const selDay = sel != null ? days[sel] : null
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
       <defs>
@@ -144,15 +149,36 @@ function GroupedChart({ days, dark, c }: { days: DayData[], dark: boolean, c: C 
       <line x1={pl} x2={W - pr} y1={axisY} y2={axisY} stroke={c.outlineVar} strokeWidth={1} />
       {days.map((x, i) => {
         const cx = pl + (i + 0.5) * slot
+        const active = sel === i
         return (
           <g key={i}>
-            <rect x={cx - bw - 1} y={Y(x.intake)} width={bw} height={pt + ih - Y(x.intake)} rx={2.5} fill={c.primary} />
+            {/* full-slot transparent hit area for easy tapping */}
+            <rect x={pl + i * slot} y={pt} width={slot} height={ih} fill="transparent"
+              style={{ cursor: 'pointer' }} onClick={() => setSel(active ? null : i)} />
+            <rect x={cx - bw - 1} y={Y(x.intake)} width={bw} height={pt + ih - Y(x.intake)} rx={2.5}
+              fill={c.primary} opacity={sel == null || active ? 1 : 0.4} pointerEvents="none" />
             <rect x={cx + 1}     y={Y(x.burn)}   width={bw} height={pt + ih - Y(x.burn)}   rx={2.5}
-              fill="url(#burnHatch)" stroke={c.tertiary} strokeWidth={1} />
-            <text x={cx} y={H - 6} textAnchor="middle" fill={c.onSurfVar} fontSize={8} fontFamily="Roboto, sans-serif">{x.dom}</text>
+              fill="url(#burnHatch)" stroke={c.tertiary} strokeWidth={1}
+              opacity={sel == null || active ? 1 : 0.4} pointerEvents="none" />
+            <text x={cx} y={H - 6} textAnchor="middle" fill={c.onSurfVar} fontSize={8} fontFamily="Roboto, sans-serif" pointerEvents="none">{x.dom}</text>
           </g>
         )
       })}
+      {/* tooltip for the selected day */}
+      {selDay && (() => {
+        const cx = pl + (sel! + 0.5) * slot
+        const bw2 = 96, bh = 38
+        const bx = Math.min(Math.max(cx - bw2 / 2, 2), W - bw2 - 2)
+        return (
+          <g pointerEvents="none">
+            <rect x={bx} y={pt - 2} width={bw2} height={bh} rx={6} fill={c.surfHighest}
+              stroke={c.outlineVar} strokeWidth={1} />
+            <text x={bx + 8} y={pt + 11} fill={c.onSurf} fontSize={9} fontWeight={600} fontFamily="Roboto, sans-serif">{selDay.md}</text>
+            <text x={bx + 8} y={pt + 23} fill={c.primary} fontSize={9} fontFamily="Roboto, sans-serif" style={{ fontFeatureSettings: '"tnum"' }}>摂取 {Math.round(selDay.intake).toLocaleString()}</text>
+            <text x={bx + 8} y={pt + 34} fill={c.tertiary} fontSize={9} fontFamily="Roboto, sans-serif" style={{ fontFeatureSettings: '"tnum"' }}>消費 {Math.round(selDay.burn).toLocaleString()}</text>
+          </g>
+        )
+      })()}
     </svg>
   )
 }

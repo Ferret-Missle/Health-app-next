@@ -20,13 +20,25 @@ export type GenerateResult =
   | { ok: true;  advice: string; quota: QuotaEstimate; promptTokens: number; compTokens: number }
   | { ok: false; reason: 'quota_exhausted' | 'no_data' | 'rate_limited' | 'llm_error'; quota?: QuotaEstimate; message?: string }
 
+/** Today's JST calendar date as 'YYYY-MM-DD'. */
+function todayJst(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 async function recentData(days = 14) {
+  // Exclude today (JST): the current day's food log is usually incomplete, so it
+  // shows up as an outlier (near-zero intake). Advice should look at completed
+  // days only. We fetch one extra day and drop today to keep `days` full.
   const rows = await sql`
     SELECT date::text AS date,
            burn_kcal, steps, heart_rate_avg, sleep_min,
            weight_kg, body_fat_pct,
-           intake_kcal, p_g, f_g, c_g
-    FROM (SELECT * FROM daily_data ORDER BY date DESC LIMIT ${days}) recent
+           intake_kcal, p_g, f_g, c_g, foods
+    FROM (
+      SELECT * FROM daily_data
+      WHERE date < ${todayJst()}::date
+      ORDER BY date DESC LIMIT ${days}
+    ) recent
     ORDER BY date ASC
   ` as DailyRow[]
   return rowsToDayData(rows)

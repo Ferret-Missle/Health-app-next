@@ -101,13 +101,14 @@ export async function POST(req: NextRequest) {
         }
         for (const d of intakeData) {
           await sql`
-            INSERT INTO daily_data (date, intake_kcal, p_g, f_g, c_g)
-            VALUES (${d.date}, ${d.intakeKcal}, ${d.pG}, ${d.fG}, ${d.cG})
+            INSERT INTO daily_data (date, intake_kcal, p_g, f_g, c_g, foods)
+            VALUES (${d.date}, ${d.intakeKcal}, ${d.pG}, ${d.fG}, ${d.cG}, ${d.foods})
             ON CONFLICT (date) DO UPDATE SET
               intake_kcal = COALESCE(${d.intakeKcal}, daily_data.intake_kcal),
               p_g         = COALESCE(${d.pG},          daily_data.p_g),
               f_g         = COALESCE(${d.fG},          daily_data.f_g),
               c_g         = COALESCE(${d.cG},          daily_data.c_g),
+              foods       = COALESCE(${d.foods},       daily_data.foods),
               updated_at  = NOW()
           `
         }

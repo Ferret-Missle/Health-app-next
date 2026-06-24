@@ -16,6 +16,7 @@ export interface DayData {
   cum: number;   // cumulative balance
   steps?: number;  // optional: only populated from DB rows (not seed mock)
   sleep?: number;  // optional: sleep minutes, from DB rows
+  foods?: string;  // optional: that day's logged food names, from DB rows
 }
 
 function gen(): DayData[] {
@@ -66,6 +67,7 @@ export interface DailyRow {
   p_g:            number | string | null;
   f_g:            number | string | null;
   c_g:            number | string | null;
+  foods?:         string | null;
 }
 
 const num = (v: number | string | null | undefined): number => {
@@ -106,6 +108,7 @@ export function rowsToDayData(rows: DailyRow[]): DayData[] {
       cum,
       steps: num(r.steps),
       sleep: num(r.sleep_min),
+      foods: r.foods ?? undefined,
     };
   });
 }

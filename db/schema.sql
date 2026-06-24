@@ -27,9 +27,13 @@ CREATE TABLE IF NOT EXISTS daily_data (
   p_g            NUMERIC(6,1),              -- protein g
   f_g            NUMERIC(6,1),              -- fat g
   c_g            NUMERIC(6,1),              -- carbs g
+  foods          TEXT,                      -- that day's logged food names (e.g. "サラダチキン×1, おにぎり×2")
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   updated_at     TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add foods to pre-existing tables (idempotent).
+ALTER TABLE daily_data ADD COLUMN IF NOT EXISTS foods TEXT;
 
 -- LLM usage tracking for Groq quota self-management (FR-4.5 / NFR-7)
 CREATE TABLE IF NOT EXISTS llm_usage (
