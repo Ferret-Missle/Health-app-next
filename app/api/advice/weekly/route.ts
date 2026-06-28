@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { sql } from '@/lib/db'
-import { ownerGuard } from '@/lib/firebase-admin'
+import { userGuard } from '@/lib/firebase-admin'
 import { generateAdvice, logAdvice, DEFAULT_K } from '@/lib/advice-core'
 import type { LlmConfig } from '@/lib/groq'
 
@@ -24,8 +24,9 @@ function currentWeekStartJst(now = new Date()): string {
 // POST: run the weekly advice if this week's hasn't run yet.
 // Body (optional): { tgtW, days, k, provider, apiKey, baseUrl, model }
 export async function POST(req: NextRequest) {
-  const denied = await ownerGuard(req)
-  if (denied) return denied
+  const auth = await userGuard(req)
+  if (auth instanceof NextResponse) return auth
+  const { uid } = auth
 
   const body = await req.json().catch(() => ({})) as {
     tgtW?: number; days?: number; k?: number
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
   // Already ran this week? Return the stored advice instead of spending a call.
   const existing = await sql`
     SELECT advice, created_at FROM advice_log
-    WHERE kind = 'weekly' AND week_start = ${weekStart}
+    WHERE user_id = ${uid} AND kind = 'weekly' AND week_start = ${weekStart}
     LIMIT 1
   ` as { advice: string; created_at: string }[]
   if (existing.length) {
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await generateAdvice({
+    userId: uid,
     tgtW: body.tgtW ?? 72,
     days: body.days ?? 90,
     k:    body.k ?? DEFAULT_K,
@@ -64,9 +66,9 @@ export async function POST(req: NextRequest) {
   // Persist under a unique (week_start) index; a concurrent run loses the race
   // harmlessly (ON CONFLICT DO NOTHING) so we never double-charge a week.
   await sql`
-    INSERT INTO advice_log (kind, week_start, advice)
-    VALUES ('weekly', ${weekStart}, ${result.advice})
-    ON CONFLICT (week_start) WHERE kind = 'weekly' DO NOTHING
+    INSERT INTO advice_log (user_id, kind, week_start, advice)
+    VALUES (${uid}, 'weekly', ${weekStart}, ${result.advice})
+    ON CONFLICT (user_id, week_start) WHERE kind = 'weekly' DO NOTHING
   `
 
   return NextResponse.json({ ran: true, weekStart, advice: result.advice, quota: result.quota })

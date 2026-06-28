@@ -2,9 +2,14 @@ import { initializeApp, getApps, getApp, cert, type App } from 'firebase-admin/a
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth'
 import { NextResponse } from 'next/server'
 
-// Server-side Admin SDK: verifies ID tokens and enforces single-owner access.
+// Server-side Admin SDK: verifies ID tokens and enforces allow-list access.
 // Credentials come from FIREBASE_SERVICE_ACCOUNT (a JSON string of the service
-// account key). ALLOWED_UID restricts the app to the owner's Firebase UID.
+// account key).
+//
+// Access is restricted to an allow-list (multi-user): a request is accepted if
+// the verified token's email is in ALLOWED_EMAILS, or its uid is in
+// ALLOWED_UIDS (legacy single-value ALLOWED_UID is still honored). The uid is
+// then used as the per-user partition key for all data.
 
 let _app: App | null = null
 
@@ -36,11 +41,35 @@ export class AuthError extends Error {
   }
 }
 
+/** Parse a comma/space-separated env list into a lowercased, trimmed set. */
+function envSet(name: string): Set<string> {
+  return new Set(
+    (process.env[name] ?? '')
+      .split(/[,\s]+/)
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
+/** Whether the verified token is on the access allow-list. */
+function isAllowed(decoded: DecodedIdToken): boolean {
+  const emails = envSet('ALLOWED_EMAILS')
+  const uids = envSet('ALLOWED_UIDS')
+  // Legacy single-value var stays supported.
+  const legacyUid = process.env.ALLOWED_UID?.trim().toLowerCase()
+  if (legacyUid) uids.add(legacyUid)
+
+  if (uids.has(decoded.uid.toLowerCase())) return true
+  if (decoded.email && decoded.email_verified && emails.has(decoded.email.toLowerCase())) return true
+  return false
+}
+
 /**
- * Verify the Bearer ID token on a request and confirm it belongs to the owner.
- * Throws AuthError (401 unauthenticated / 403 not the owner) otherwise.
+ * Verify the Bearer ID token on a request and confirm it is on the allow-list.
+ * Returns the decoded token (whose `uid` is the per-user partition key).
+ * Throws AuthError (401 unauthenticated / 403 not allowed / 500 misconfigured).
  */
-export async function requireOwner(req: Request): Promise<DecodedIdToken> {
+export async function requireUser(req: Request): Promise<DecodedIdToken> {
   const header = req.headers.get('authorization') || ''
   const match = header.match(/^Bearer (.+)$/)
   if (!match) throw new AuthError('Missing bearer token', 401)
@@ -52,22 +81,24 @@ export async function requireOwner(req: Request): Promise<DecodedIdToken> {
     throw new AuthError('Invalid or expired token', 401)
   }
 
-  const allowed = process.env.ALLOWED_UID
-  if (!allowed) throw new AuthError('ALLOWED_UID is not configured', 500)
-  if (decoded.uid !== allowed) throw new AuthError('Not authorized', 403)
+  const configured = envSet('ALLOWED_EMAILS').size + envSet('ALLOWED_UIDS').size + (process.env.ALLOWED_UID ? 1 : 0)
+  if (configured === 0) throw new AuthError('No allow-list configured (set ALLOWED_EMAILS)', 500)
+  if (!isAllowed(decoded)) throw new AuthError('Not authorized', 403)
 
   return decoded
 }
 
 /**
- * Route guard: returns a NextResponse to short-circuit when auth fails, or null
- * when the owner is verified (let the handler continue).
- *   const denied = await ownerGuard(req); if (denied) return denied
+ * Route guard: returns the authenticated user's `{ uid }` on success, or a
+ * NextResponse to short-circuit when auth fails.
+ *   const auth = await userGuard(req)
+ *   if (auth instanceof NextResponse) return auth
+ *   const { uid } = auth
  */
-export async function ownerGuard(req: Request): Promise<NextResponse | null> {
+export async function userGuard(req: Request): Promise<{ uid: string } | NextResponse> {
   try {
-    await requireOwner(req)
-    return null
+    const decoded = await requireUser(req)
+    return { uid: decoded.uid }
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
     throw e

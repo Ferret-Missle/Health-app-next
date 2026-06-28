@@ -10,6 +10,7 @@ import { estimateQuota, recordUsage, cacheRpd, getCachedRpd, type QuotaEstimate 
 export const DEFAULT_K = 7200
 
 export interface GenerateArgs {
+  userId: string
   tgtW: number
   days: number
   k:    number
@@ -25,7 +26,7 @@ function todayJst(): string {
   return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
-async function recentData(days = 14) {
+async function recentData(userId: string, days = 14) {
   // Exclude today (JST): the current day's food log is usually incomplete, so it
   // shows up as an outlier (near-zero intake). Advice should look at completed
   // days only. We fetch one extra day and drop today to keep `days` full.
@@ -36,7 +37,7 @@ async function recentData(days = 14) {
            intake_kcal, p_g, f_g, c_g, foods
     FROM (
       SELECT * FROM daily_data
-      WHERE date < ${todayJst()}::date
+      WHERE user_id = ${userId} AND date < ${todayJst()}::date
       ORDER BY date DESC LIMIT ${days}
     ) recent
     ORDER BY date ASC
@@ -51,29 +52,30 @@ async function recentData(days = 14) {
  */
 export async function generateAdvice(args: GenerateArgs): Promise<GenerateResult> {
   const provider = args.cfg.provider ?? 'groq'
+  const { userId } = args
 
   if (provider === 'groq') {
-    const pre = await estimateQuota(getCachedRpd())
+    const pre = await estimateQuota(userId, getCachedRpd(userId))
     if (pre.exhausted) return { ok: false, reason: 'quota_exhausted', quota: pre }
   }
 
-  const data = await recentData(14)
+  const data = await recentData(userId, 14)
   if (data.length === 0) return { ok: false, reason: 'no_data' }
 
   const messages = buildAdvicePrompt({ data, tgtW: args.tgtW, days: args.days, k: args.k })
 
   try {
     const result = await chat(messages, args.cfg)
-    await recordUsage(result.promptTokens, result.compTokens, provider)
-    cacheRpd(result.rateLimit)
-    const quota = await estimateQuota(result.rateLimit.remainingRequests)
+    await recordUsage(userId, result.promptTokens, result.compTokens, provider)
+    cacheRpd(userId, result.rateLimit)
+    const quota = await estimateQuota(userId, result.rateLimit.remainingRequests)
     return {
       ok: true, advice: result.text, quota,
       promptTokens: result.promptTokens, compTokens: result.compTokens,
     }
   } catch (e) {
     const err = e as Error & { status?: number; rateLimit?: import('./groq').RateLimit }
-    if (err.rateLimit) cacheRpd(err.rateLimit)
+    if (err.rateLimit) cacheRpd(userId, err.rateLimit)
     return {
       ok: false,
       reason: err.status === 429 ? 'rate_limited' : 'llm_error',
@@ -83,9 +85,9 @@ export async function generateAdvice(args: GenerateArgs): Promise<GenerateResult
 }
 
 /** Save an advice entry. week_start is required for kind='weekly'. */
-export async function logAdvice(kind: 'manual' | 'weekly', advice: string, weekStart?: string): Promise<void> {
+export async function logAdvice(userId: string, kind: 'manual' | 'weekly', advice: string, weekStart?: string): Promise<void> {
   await sql`
-    INSERT INTO advice_log (kind, week_start, advice)
-    VALUES (${kind}, ${weekStart ?? null}, ${advice})
+    INSERT INTO advice_log (user_id, kind, week_start, advice)
+    VALUES (${userId}, ${kind}, ${weekStart ?? null}, ${advice})
   `
 }

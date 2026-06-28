@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import type { LlmConfig } from '@/lib/groq'
 import { estimateQuota, getCachedRpd } from '@/lib/quota'
-import { ownerGuard } from '@/lib/firebase-admin'
+import { userGuard } from '@/lib/firebase-admin'
 import { generateAdvice, logAdvice, DEFAULT_K } from '@/lib/advice-core'
 
 export const dynamic = 'force-dynamic'
@@ -10,23 +10,26 @@ export const maxDuration = 60
 
 // GET: quota estimate for the home button label (no LLM call).
 export async function GET(req: NextRequest) {
-  const denied = await ownerGuard(req)
-  if (denied) return denied
+  const auth = await userGuard(req)
+  if (auth instanceof NextResponse) return auth
+  const { uid } = auth
 
-  const quota = await estimateQuota(getCachedRpd())
+  const quota = await estimateQuota(uid, getCachedRpd(uid))
   return NextResponse.json({ quota })
 }
 
 // POST: generate advice. Body: { tgtW, days, k?, provider?, apiKey?, baseUrl?, model? }
 export async function POST(req: NextRequest) {
-  const denied = await ownerGuard(req)
-  if (denied) return denied
+  const auth = await userGuard(req)
+  if (auth instanceof NextResponse) return auth
+  const { uid } = auth
 
   const body = await req.json().catch(() => ({})) as {
     tgtW?: number; days?: number; k?: number
   } & LlmConfig
 
   const result = await generateAdvice({
+    userId: uid,
     tgtW: body.tgtW ?? 72,
     days: body.days ?? 90,
     k:    body.k ?? DEFAULT_K,
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  await logAdvice('manual', result.advice)
+  await logAdvice(uid, 'manual', result.advice)
 
   return NextResponse.json({
     ok:     true,

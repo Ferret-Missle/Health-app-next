@@ -8,7 +8,7 @@ import {
 } from 'firebase/auth'
 
 // Client-side Firebase config (safe to expose; security is enforced server-side
-// by verifying the ID token + ALLOWED_UID on every API request).
+// by verifying the ID token against the access allow-list on every API request).
 const firebaseConfig = {
   apiKey:            process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain:        process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,

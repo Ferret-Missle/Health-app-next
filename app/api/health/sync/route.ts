@@ -3,7 +3,7 @@ import { getGoogleAccessToken } from '@/lib/google-auth'
 import { fetchActivityData, fetchBodyData } from '@/lib/google-health'
 import { fetchIntakeData } from '@/lib/fatsecret'
 import { sql } from '@/lib/db'
-import { ownerGuard } from '@/lib/firebase-admin'
+import { userGuard } from '@/lib/firebase-admin'
 
 // Backfills can fetch many days (chunked); allow the full Hobby-tier ceiling so
 // month-scale syncs don't hit the default 10s function timeout (R3).
@@ -17,8 +17,9 @@ export const maxDuration = 60
 // one is reported but doesn't abort the others.
 
 export async function POST(req: NextRequest) {
-  const denied = await ownerGuard(req)
-  if (denied) return denied
+  const auth = await userGuard(req)
+  if (auth instanceof NextResponse) return auth
+  const { uid } = auth
 
   const body = await req.json().catch(() => ({})) as { days?: number }
   const days = Math.min(body.days ?? 7, 90)
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
       let activityData: Awaited<ReturnType<typeof fetchActivityData>> = []
       let bodyData: Awaited<ReturnType<typeof fetchBodyData>> = []
       try {
-        accessToken = await getGoogleAccessToken()
+        accessToken = await getGoogleAccessToken(uid)
         progress(1, '活動データ(消費・歩数・心拍・睡眠)を取得中…')
         activityData = await fetchActivityData(accessToken, startMs, endMs)
       } catch (e) {
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
       progress(3, '食事(摂取カロリー・PFC)を取得中…')
       let intakeData: Awaited<ReturnType<typeof fetchIntakeData>> = []
       try {
-        intakeData = await fetchIntakeData(startMs, endMs)
+        intakeData = await fetchIntakeData(uid, startMs, endMs)
       } catch (e) {
         errors.push(`intake: ${e instanceof Error ? e.message : String(e)}`)
       }
@@ -93,10 +94,10 @@ export async function POST(req: NextRequest) {
         for (const d of intakeData)   Object.assign(at(d.date), { intakeKcal: d.intakeKcal, pG: d.pG, fG: d.fG, cG: d.cG, foods: d.foods })
 
         await Promise.all([...byDate.values()].map(d => sql`
-          INSERT INTO daily_data (date, burn_kcal, steps, heart_rate_avg, sleep_min, weight_kg, body_fat_pct, intake_kcal, p_g, f_g, c_g, foods)
-          VALUES (${d.date}, ${d.burnKcal ?? null}, ${d.steps ?? null}, ${d.heartRateAvg ?? null}, ${d.sleepMin ?? null},
+          INSERT INTO daily_data (user_id, date, burn_kcal, steps, heart_rate_avg, sleep_min, weight_kg, body_fat_pct, intake_kcal, p_g, f_g, c_g, foods)
+          VALUES (${uid}, ${d.date}, ${d.burnKcal ?? null}, ${d.steps ?? null}, ${d.heartRateAvg ?? null}, ${d.sleepMin ?? null},
                   ${d.weightKg ?? null}, ${d.bodyFatPct ?? null}, ${d.intakeKcal ?? null}, ${d.pG ?? null}, ${d.fG ?? null}, ${d.cG ?? null}, ${d.foods ?? null})
-          ON CONFLICT (date) DO UPDATE SET
+          ON CONFLICT (user_id, date) DO UPDATE SET
             burn_kcal      = COALESCE(${d.burnKcal ?? null},     daily_data.burn_kcal),
             steps          = COALESCE(${d.steps ?? null},         daily_data.steps),
             heart_rate_avg = COALESCE(${d.heartRateAvg ?? null}, daily_data.heart_rate_avg),

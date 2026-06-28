@@ -99,14 +99,14 @@ interface FsTokenRow { access_token: string; refresh_token: string | null }
 // We reuse oauth_tokens: access_token = oauth_token, refresh_token = oauth_token_secret
 // (OAuth 1.0 has a token *secret*, not a refresh token; the column is repurposed).
 // expires_at is set far in the future since OAuth 1.0 tokens don't expire.
-export async function saveFatSecretToken(token: string, secret: string): Promise<void> {
+export async function saveFatSecretToken(userId: string, token: string, secret: string): Promise<void> {
   const farFuture = new Date('2099-12-31T00:00:00Z').toISOString()
   const encToken  = encrypt(token)
   const encSecret = encrypt(secret)
   await sql`
-    INSERT INTO oauth_tokens (provider, access_token, refresh_token, expires_at)
-    VALUES ('fatsecret', ${encToken}, ${encSecret}, ${farFuture})
-    ON CONFLICT (provider) DO UPDATE SET
+    INSERT INTO oauth_tokens (user_id, provider, access_token, refresh_token, expires_at)
+    VALUES (${userId}, 'fatsecret', ${encToken}, ${encSecret}, ${farFuture})
+    ON CONFLICT (user_id, provider) DO UPDATE SET
       access_token  = ${encToken},
       refresh_token = ${encSecret},
       expires_at    = ${farFuture},
@@ -114,9 +114,10 @@ export async function saveFatSecretToken(token: string, secret: string): Promise
   `
 }
 
-export async function getFatSecretToken(): Promise<{ token: string; secret: string }> {
+export async function getFatSecretToken(userId: string): Promise<{ token: string; secret: string }> {
   const rows = await sql`
-    SELECT access_token, refresh_token FROM oauth_tokens WHERE provider = 'fatsecret' LIMIT 1
+    SELECT access_token, refresh_token FROM oauth_tokens
+    WHERE user_id = ${userId} AND provider = 'fatsecret' LIMIT 1
   ` as FsTokenRow[]
   if (rows.length === 0 || !rows[0].refresh_token) {
     throw new Error('FatSecret not connected')
