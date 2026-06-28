@@ -40,4 +40,5 @@ export interface TabProps {
   lastSynced:  Date | null
   sync:        (days?: number) => Promise<void>
   weeklyAdvice: string | null   // FR-4.4: this week's auto-generated advice, if any
+  userEmail:   string | null    // signed-in user's email (shown on the home header)
 }
