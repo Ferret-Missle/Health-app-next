@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
-import { getFirebaseAuth, signInWithGoogle, signOut, type User } from './firebase'
+import { getFirebaseAuth, signInWithGoogle, completeRedirectSignIn, signOut, type User } from './firebase'
 
 interface UseAuth {
   user:    User | null
@@ -18,6 +18,14 @@ export function useAuth(): UseAuth {
   const [error, setError]     = useState<string | null>(null)
 
   useEffect(() => {
+    // Surface errors from a redirect-based sign-in returning to the app; the
+    // resulting user itself is delivered by onAuthStateChanged below.
+    completeRedirectSignIn().catch(e => {
+      const code = (e as { code?: string }).code
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return
+      setError(e instanceof Error ? e.message : String(e))
+    })
+
     const unsub = onAuthStateChanged(getFirebaseAuth(), u => {
       setUser(u)
       setLoading(false)

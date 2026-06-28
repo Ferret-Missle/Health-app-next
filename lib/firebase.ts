@@ -2,10 +2,12 @@
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app'
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut,
+  getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
+  signOut as fbSignOut,
   onAuthStateChanged,
   type Auth, type User,
 } from 'firebase/auth'
+import { isAndroid, isIOS } from './inAppBrowser'
 
 // Client-side Firebase config (safe to expose; security is enforced server-side
 // by verifying the ID token against the access allow-list on every API request).
@@ -27,10 +29,42 @@ export function getFirebaseAuth(): Auth {
   return _auth
 }
 
-export async function signInWithGoogle(): Promise<User> {
+function isMobile(): boolean {
+  return isAndroid() || isIOS()
+}
+
+/**
+ * Start Google sign-in. On mobile we use a full-page redirect (popups are
+ * unreliable in mobile browsers and often blocked); on desktop we use a popup,
+ * falling back to redirect if the popup is blocked. On redirect the page
+ * navigates away, so the returned promise only resolves for the popup path —
+ * completion after a redirect is handled by completeRedirectSignIn() on load.
+ */
+export async function signInWithGoogle(): Promise<User | null> {
   const provider = new GoogleAuthProvider()
-  const result = await signInWithPopup(getFirebaseAuth(), provider)
-  return result.user
+  const auth = getFirebaseAuth()
+
+  if (isMobile()) {
+    await signInWithRedirect(auth, provider)
+    return null
+  }
+
+  try {
+    const result = await signInWithPopup(auth, provider)
+    return result.user
+  } catch (e) {
+    const code = (e as { code?: string }).code
+    if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
+      await signInWithRedirect(auth, provider)
+      return null
+    }
+    throw e
+  }
+}
+
+/** Complete a redirect-based sign-in on page load; returns the user or null. */
+export function completeRedirectSignIn(): Promise<User | null> {
+  return getRedirectResult(getFirebaseAuth()).then(r => r?.user ?? null)
 }
 
 export function signOut(): Promise<void> {

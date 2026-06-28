@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '@/lib/useAuth'
 import { authFetch } from '@/lib/authFetch'
+import { isInAppBrowser, isAndroid } from '@/lib/inAppBrowser'
 
 const backdrop = '#c4cfc8'
 
@@ -17,6 +18,78 @@ function Centered({ children }: { children: ReactNode }) {
 }
 
 /**
+ * Shown on the sign-in screen when the app is opened inside an in-app browser
+ * (WebView), where Google blocks OAuth (error 403: disallowed_useragent). Guides
+ * the user to reopen in Chrome/Safari. On Android we can force-open Chrome via an
+ * intent: URL; on iOS that isn't possible, so we offer to copy the URL.
+ */
+function InAppBrowserNotice() {
+  const [copied, setCopied] = useState(false)
+
+  const openExternally = () => {
+    const { host, pathname, search } = window.location
+    // intent: URL opens the link directly in Chrome on Android.
+    window.location.href =
+      `intent://${host}${pathname}${search}#Intent;scheme=https;package=com.android.chrome;end`
+  }
+
+  const copyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div style={{
+      width: '100%', background: '#fff4e5', border: '1px solid #f0c98a', borderRadius: 16,
+      padding: '16px 16px', display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="ms" style={{ fontSize: 20, color: '#9a6700' }}>open_in_new</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#7a4f00' }}>ブラウザで開いてください</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: '#7a5a1e', lineHeight: '19px' }}>
+        アプリ内ブラウザ（LINE・Instagram 等）では Google ログインが Google 側でブロックされます。
+        Chrome または Safari で開き直してください。
+      </div>
+      {isAndroid() ? (
+        <button type="button" onClick={openExternally} style={{
+          width: '100%', height: 44, border: 'none', borderRadius: 999,
+          background: '#175C49', color: '#fff', fontSize: 14, fontWeight: 600,
+          fontFamily: 'inherit', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        }}>
+          <span className="ms" style={{ fontSize: 18 }}>open_in_browser</span>
+          Chrome で開く
+        </button>
+      ) : (
+        <>
+          <div style={{ fontSize: 12, color: '#7a5a1e', lineHeight: '18px' }}>
+            iPhone は右上のメニューから「Safari で開く」を選ぶか、下のボタンで URL をコピーして
+            Safari に貼り付けてください。
+          </div>
+          <button type="button" onClick={copyUrl} style={{
+            width: '100%', height: 44, border: '1px solid #c4cfc8', borderRadius: 999,
+            background: '#fff', color: '#1a2420', fontSize: 14, fontWeight: 600,
+            fontFamily: 'inherit', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+            <span className="ms" style={{ fontSize: 18, color: '#175C49' }}>
+              {copied ? 'check' : 'content_copy'}
+            </span>
+            {copied ? 'コピーしました' : 'URL をコピー'}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
  * Gates the whole app behind Google sign-in. The actual data authorization
  * (allow-list) is enforced server-side; here we additionally probe a guarded
  * endpoint after sign-in so a signed-in but not-allow-listed user sees a clear
@@ -25,6 +98,11 @@ function Centered({ children }: { children: ReactNode }) {
 export default function AuthGate({ children }: { children: ReactNode }) {
   const { user, loading, error, signIn, logout } = useAuth()
   const [authz, setAuthz] = useState<'checking' | 'ok' | 'denied'>('checking')
+  // Detected after mount only — navigator isn't available during SSR and we must
+  // avoid a hydration mismatch.
+  const [inApp, setInApp] = useState(false)
+
+  useEffect(() => { setInApp(isInAppBrowser()) }, [])
 
   useEffect(() => {
     if (!user) { setAuthz('checking'); return }
@@ -61,6 +139,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
               続けるには Google でサインインしてください。
             </div>
           </div>
+          {inApp && <InAppBrowserNotice />}
           <button type="button" onClick={signIn} style={{
             width: '100%', height: 48, border: '1px solid #c4cfc8', borderRadius: 999,
             background: '#fff', color: '#1a2420', fontSize: 14, fontWeight: 600,
