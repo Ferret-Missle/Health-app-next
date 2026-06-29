@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { L, D } from '@/lib/colors'
@@ -47,6 +47,25 @@ function AppInner() {
   const { data: DATA, syncing, progress, lastSynced, sync } = useHealthData()
   const { user, logout } = useAuth()
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+
+  // Surface the result of an OAuth link flow. The provider callbacks redirect
+  // back with ?auth=success / ?auth_error=… / ?fatsecret=success / ?fatsecret_error=…;
+  // without this the user returns to the app with no idea it failed (or why).
+  const [linkNotice, setLinkNotice] = useState<{ ok: boolean; text: string } | null>(null)
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    let n: { ok: boolean; text: string } | null = null
+    if (q.get('auth') === 'success')            n = { ok: true,  text: 'Google Health と連携しました。' }
+    else if (q.get('auth_error'))               n = { ok: false, text: `Google 連携に失敗しました: ${q.get('auth_error')}` }
+    else if (q.get('fatsecret') === 'success')  n = { ok: true,  text: 'FatSecret と連携しました。' }
+    else if (q.get('fatsecret_error'))          n = { ok: false, text: `FatSecret 連携に失敗しました: ${q.get('fatsecret_error')}` }
+    if (n) {
+      setLinkNotice(n)
+      const url = new URL(window.location.href)
+      for (const k of ['auth', 'auth_error', 'fatsecret', 'fatsecret_error']) url.searchParams.delete(k)
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+    }
+  }, [])
 
   const set: Updater = (patch) => setS(prev => ({ ...prev, ...patch }))
 
@@ -179,6 +198,27 @@ function AppInner() {
               <span className="ms" style={{ fontSize: 22 }}>logout</span>
             </button>
           </div>
+
+          {/* OAuth link result banner (success / failure with the reason). */}
+          {linkNotice && (
+            <div style={{
+              flex: 'none', display: 'flex', alignItems: 'flex-start', gap: 8,
+              padding: '10px 14px', zIndex: 5,
+              background: linkNotice.ok ? c.onTrackC : c.offTrackC,
+              color: linkNotice.ok ? c.onTrack : c.offTrack,
+            }}>
+              <span className="ms" style={{ fontSize: 18, flex: 'none', marginTop: 1 }}>
+                {linkNotice.ok ? 'check_circle' : 'error'}
+              </span>
+              <span style={{ flex: 1, fontSize: 12.5, lineHeight: '18px', wordBreak: 'break-word' }}>{linkNotice.text}</span>
+              <button type="button" onClick={() => setLinkNotice(null)} aria-label="閉じる" style={{
+                flex: 'none', border: 'none', background: 'none', cursor: 'pointer',
+                color: 'inherit', display: 'inline-flex', padding: 0,
+              }}>
+                <span className="ms" style={{ fontSize: 18 }}>close</span>
+              </button>
+            </div>
+          )}
 
           {/* Sync progress bar (determinate, step-based). 3px track + label row. */}
           <div style={{

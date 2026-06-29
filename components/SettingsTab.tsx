@@ -9,6 +9,7 @@ import type { TabProps } from '@/lib/types'
 import type { QuotaInfo } from '@/lib/useAdvice'
 import { authFetch } from '@/lib/authFetch'
 import { getByokKey, setByokKey } from '@/lib/byok'
+import { useLinkStatus } from '@/lib/useLinkStatus'
 import { fx } from '@/lib/data'
 import { VERSION_LABEL } from '@/lib/version'
 
@@ -27,13 +28,7 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
       .catch(() => {})
   }, [])
 
-  const [linked, setLinked] = useState<{ google: boolean; fatsecret: boolean } | null>(null)
-  useEffect(() => {
-    authFetch('/api/auth/status', { cache: 'no-store' })
-      .then(r => r.json())
-      .then((d: { google: boolean; fatsecret: boolean }) => setLinked(d))
-      .catch(() => {})
-  }, [])
+  const linked = useLinkStatus()
 
   // The OAuth start routes are owner-guarded, so we fetch them with a Bearer
   // token (a plain <a href> can't carry one) and navigate to the returned URL.
@@ -187,7 +182,7 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
           { key: 'google'    as const, icon: 'favorite', col: c.primary, title: 'Google Health', sub: '消費・歩数・心拍・睡眠・体組成', href: '/api/auth/google' },
           { key: 'fatsecret' as const, icon: 'restaurant', col: c.tertiary, title: 'FatSecret', sub: '食事日記(3-legged OAuth・読み出し)', href: '/api/auth/fatsecret' },
         ].map((item, i) => {
-          const isLinked = linked?.[item.key] ?? false
+          const isLinked = linked[item.key]
           return (
             <div key={item.key} style={{
               display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px',

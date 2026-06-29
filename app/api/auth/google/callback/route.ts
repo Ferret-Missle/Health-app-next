@@ -57,15 +57,23 @@ export async function GET(req: NextRequest) {
   const encAccess  = encrypt(tokens.access_token)
   const encRefresh = encryptNullable(tokens.refresh_token ?? null)
 
-  await sql`
-    INSERT INTO oauth_tokens (user_id, provider, access_token, refresh_token, expires_at)
-    VALUES (${uid}, 'google', ${encAccess}, ${encRefresh}, ${expiresAt})
-    ON CONFLICT (user_id, provider) DO UPDATE SET
-      access_token  = ${encAccess},
-      refresh_token = COALESCE(${encRefresh}, oauth_tokens.refresh_token),
-      expires_at    = ${expiresAt},
-      updated_at    = NOW()
-  `
+  // Persist the token. Wrap in try/catch so a DB error (e.g. schema not migrated
+  // to the multi-user user_id columns) surfaces as a redirect the UI can show,
+  // instead of a raw 500 that leaves the user stuck on the callback URL.
+  try {
+    await sql`
+      INSERT INTO oauth_tokens (user_id, provider, access_token, refresh_token, expires_at)
+      VALUES (${uid}, 'google', ${encAccess}, ${encRefresh}, ${expiresAt})
+      ON CONFLICT (user_id, provider) DO UPDATE SET
+        access_token  = ${encAccess},
+        refresh_token = COALESCE(${encRefresh}, oauth_tokens.refresh_token),
+        expires_at    = ${expiresAt},
+        updated_at    = NOW()
+    `
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown'
+    return NextResponse.redirect(`${base}/?auth_error=${encodeURIComponent(`save: ${msg}`)}`)
+  }
 
   const res = NextResponse.redirect(`${base}/?auth=success`)
   res.cookies.delete(GOOGLE_STATE_COOKIE)

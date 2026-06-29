@@ -2,12 +2,19 @@
 
 import type { TabProps } from '@/lib/types'
 import { useAdvice } from '@/lib/useAdvice'
+import { useLinkStatus } from '@/lib/useLinkStatus'
 import { getByokKey } from '@/lib/byok'
 import { fx } from '@/lib/data'
 import InfoTip from './InfoTip'
 
-export default function HomeTab({ s, c, data, daysLeft, dailyTarget, curW, remainKg, pct, onTrack, today, kVal, weeklyAdvice, userEmail }: TabProps) {
+export default function HomeTab({ s, set, c, data, daysLeft, dailyTarget, curW, remainKg, pct, onTrack, today, kVal, weeklyAdvice, userEmail }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
+  const link = useLinkStatus()
+  // List providers that still need linking (only shown when something is missing).
+  const unlinked = [
+    !link.google    && { name: 'Google Health', sub: '消費・歩数・心拍・睡眠・体組成' },
+    !link.fatsecret && { name: 'FatSecret',     sub: '食事(摂取カロリー・PFC)' },
+  ].filter(Boolean) as { name: string; sub: string }[]
   // Today's date in JST (replaces a former hardcoded placeholder date).
   const todayLabel = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Tokyo',
@@ -51,6 +58,34 @@ export default function HomeTab({ s, c, data, daysLeft, dailyTarget, curW, remai
       }}>
         {todayLabel}{userEmail ? ` ・ ${userEmail}` : ''}
       </div>
+
+      {/* Data-link status: warn when a provider isn't connected (data won't update). */}
+      {!link.loading && unlinked.length > 0 && (
+        <div style={{
+          background: c.offTrackC, borderRadius: 16, padding: '14px 16px',
+          display: 'flex', flexDirection: 'column', gap: 10,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="ms" style={{ fontSize: 20, color: c.offTrack }}>link_off</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: c.offTrack }}>データ未連携</span>
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: '19px', color: c.offTrack }}>
+            {unlinked.map(u => u.name).join(' と ')} が未連携です。連携するとデータが自動取得されます。
+            {unlinked.map(u => (
+              <div key={u.name} style={{ fontSize: 11, opacity: .85, marginTop: 4 }}>・{u.name}：{u.sub}</div>
+            ))}
+          </div>
+          <button type="button" onClick={() => set({ tab: 'settings' })} style={{
+            alignSelf: 'flex-start', border: 'none', borderRadius: 999,
+            background: c.offTrack, color: c.surface, fontSize: 13, fontWeight: 600,
+            fontFamily: 'inherit', cursor: 'pointer', padding: '8px 16px',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <span className="ms" style={{ fontSize: 16 }}>settings</span>
+            設定で連携する
+          </button>
+        </div>
+      )}
 
       {/* Today KPI card */}
       <div style={{ background: c.surfLow, borderRadius: 24, padding: '22px 22px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
