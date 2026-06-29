@@ -10,6 +10,7 @@ import type { QuotaInfo } from '@/lib/useAdvice'
 import { authFetch } from '@/lib/authFetch'
 import { getByokKey, setByokKey } from '@/lib/byok'
 import { fx } from '@/lib/data'
+import { VERSION_LABEL } from '@/lib/version'
 
 export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSynced, sync }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
@@ -297,6 +298,14 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
           <span className="ms" style={{ fontSize: 20, animation: syncing ? 'spin 1s linear infinite' : 'none' }}>sync</span>
           {syncing ? '同期中…' : `今すぐ同期 ・ 最終 ${lastSyncedLabel}`}
         </button>
+      </div>
+
+      {/* Release version footer */}
+      <div style={{
+        textAlign: 'center', fontSize: 11, color: c.onSurfVar, opacity: .8,
+        margin: '10px 0 4px', fontFeatureSettings: '"tnum"',
+      }}>
+        健康収支トラッカー　{VERSION_LABEL}
       </div>
 
     </div>

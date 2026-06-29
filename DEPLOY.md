@@ -1,7 +1,8 @@
 # Vercel デプロイ手順
 
 このアプリ (`health-app-next/`) を Vercel に GitHub 連携でデプロイする手順。
-個人利用1名想定。本番公開すると Google OAuth のテストモード制約 (refresh token 7日失効) が解消できる。
+許可リスト方式のマルチユーザ対応（許可した複数アカウントが各自別データを持つ）。
+本番公開すると Google OAuth のテストモード制約 (refresh token 7日失効) が解消できる。
 
 ---
 
@@ -40,7 +41,10 @@ Vercel の **New Project → Import** でこのリポジトリを選ぶ。Root D
 | `GROQ_MODEL` / `GROQ_TPD_LIMIT` / `GROQ_BOOTSTRAP_TOKENS` | LLM 調整 | 任意。未設定で既定値 |
 | `TOKEN_ENCRYPTION_KEY` | トークン暗号化鍵 | **ローカルと同じ値**にしないと既存暗号化行を復号できない |
 | `FIREBASE_SERVICE_ACCOUNT` | Admin SDK 鍵JSON | サービスアカウントJSONの中身まるごと。`private_key`の改行はコード側で復元 |
-| `ALLOWED_UID` | オーナーのFirebase UID | これ以外のUIDは403 |
+| `ALLOWED_EMAILS` | 許可するユーザのGmail（カンマ区切り） | 例 `me@gmail.com, wife@gmail.com`。ここに無いアカウントは403。`email_verified` 必須 |
+| `ALLOWED_UIDS` | 許可するFirebase UID（カンマ区切り、任意） | email の代わりに UID で許可したい場合 |
+| `ALLOWED_UID` | （旧）単一オーナーUID | 後方互換で引き続き許可リストに加算される。新規は `ALLOWED_EMAILS` を推奨 |
+| `LEGACY_OWNER_UID` | 既存データの所有UID（移行時のみ） | 単一ユーザDBを移行する際、既存行の `user_id` をこの値で埋める（未設定時は `ALLOWED_UID` を使用） |
 | `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase client | |
 | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase client | |
 | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase client | |
@@ -90,4 +94,15 @@ Vercel の **New Project → Import** でこのリポジトリを選ぶ。Root D
 node scripts/migrate.mjs
 ```
 
-既存の Neon をそのまま使うなら不要（適用済み）。
+**単一ユーザ版から移行する場合（既存データを残す）**: 全テーブルに `user_id` を追加し、
+既存行を従来オーナーのUIDで埋めてから主キー/一意制約を貼り替える。移行前に
+`LEGACY_OWNER_UID`（=従来の `ALLOWED_UID`）を設定してから実行する:
+
+```bash
+# .env.local に LEGACY_OWNER_UID=<従来オーナーのFirebase UID> を入れて
+node scripts/migrate.mjs
+```
+
+移行は冪等（再実行可）。既存行が残っているのに `LEGACY_OWNER_UID`/`ALLOWED_UID` が
+未設定だと、空のオーナーで埋めないよう明示エラーで停止する。
+移行後は `ALLOWED_EMAILS` に利用者のGmailを追加すれば、その人が自分専用データで使える。

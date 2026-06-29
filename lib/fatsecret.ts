@@ -102,8 +102,8 @@ async function fetchOneDay(
 // concurrency so we don't trip FatSecret's rate limits. Empty days are skipped.
 const FS_CONCURRENCY = 5
 
-export async function fetchIntakeData(startMs: number, endMs: number): Promise<DailyIntakeData[]> {
-  const { token, secret } = await getFatSecretToken()
+export async function fetchIntakeData(userId: string, startMs: number, endMs: number): Promise<DailyIntakeData[]> {
+  const { token, secret } = await getFatSecretToken(userId)
   const startInt = jstDateInt(startMs)
   const endInt   = jstDateInt(endMs - 1)  // inclusive last JST day
 

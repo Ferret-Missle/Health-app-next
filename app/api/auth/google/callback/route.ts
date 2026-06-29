@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { sql } from '@/lib/db'
 import { encrypt, encryptNullable } from '@/lib/crypto'
-import { timingSafeEq, GOOGLE_STATE_COOKIE } from '@/lib/oauth-state'
+import { timingSafeEq, parseStateCookie, GOOGLE_STATE_COOKIE } from '@/lib/oauth-state'
 import { appBaseUrl } from '@/lib/app-url'
 
 interface TokenResponse {
@@ -23,11 +23,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${base}/?auth_error=${error ?? 'no_code'}`)
   }
 
-  // CSRF: the state must match the cookie our owner-guarded start route set.
-  const cookieState = req.cookies.get(GOOGLE_STATE_COOKIE)?.value
-  if (!state || !cookieState || !timingSafeEq(state, cookieState)) {
+  // CSRF: the state must match the cookie our guarded start route set. The cookie
+  // is `${uid}:${state}` — recover the uid (which user is linking) only after the
+  // random state half matches.
+  const parsed = parseStateCookie(req.cookies.get(GOOGLE_STATE_COOKIE)?.value)
+  if (!state || !parsed || !timingSafeEq(state, parsed.state)) {
     return NextResponse.redirect(`${base}/?auth_error=state_mismatch`)
   }
+  const uid = parsed.uid
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -55,9 +58,9 @@ export async function GET(req: NextRequest) {
   const encRefresh = encryptNullable(tokens.refresh_token ?? null)
 
   await sql`
-    INSERT INTO oauth_tokens (provider, access_token, refresh_token, expires_at)
-    VALUES ('google', ${encAccess}, ${encRefresh}, ${expiresAt})
-    ON CONFLICT (provider) DO UPDATE SET
+    INSERT INTO oauth_tokens (user_id, provider, access_token, refresh_token, expires_at)
+    VALUES (${uid}, 'google', ${encAccess}, ${encRefresh}, ${expiresAt})
+    ON CONFLICT (user_id, provider) DO UPDATE SET
       access_token  = ${encAccess},
       refresh_token = COALESCE(${encRefresh}, oauth_tokens.refresh_token),
       expires_at    = ${expiresAt},

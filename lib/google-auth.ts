@@ -7,11 +7,11 @@ interface TokenRow {
   expires_at: string
 }
 
-export async function getGoogleAccessToken(): Promise<string> {
+export async function getGoogleAccessToken(userId: string): Promise<string> {
   const rows = await sql`
     SELECT access_token, refresh_token, expires_at
     FROM oauth_tokens
-    WHERE provider = 'google'
+    WHERE user_id = ${userId} AND provider = 'google'
     LIMIT 1
   ` as TokenRow[]
 
@@ -51,7 +51,7 @@ export async function getGoogleAccessToken(): Promise<string> {
     SET access_token = ${encrypt(data.access_token)},
         expires_at   = ${newExpiry},
         updated_at   = NOW()
-    WHERE provider = 'google'
+    WHERE user_id = ${userId} AND provider = 'google'
   `
 
   return data.access_token

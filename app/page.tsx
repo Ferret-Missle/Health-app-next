@@ -45,7 +45,7 @@ function AppInner() {
   })
 
   const { data: DATA, syncing, progress, lastSynced, sync } = useHealthData()
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   const set: Updater = (patch) => setS(prev => ({ ...prev, ...patch }))
@@ -117,7 +117,7 @@ function AppInner() {
   const tabTitle = { home: 'ホーム', balance: '収支', forecast: '予実', settings: '設定' }[s.tab]
   const backdrop = s.dark ? '#05140f' : '#c4cfc8'
 
-  const props: TabProps = { s, set, c, data: DATA, daysLeft, dailyTarget, curW, startW, remainKg, pct, onTrack, today, kVal, kInfo, syncing, lastSynced, sync, weeklyAdvice }
+  const props: TabProps = { s, set, c, data: DATA, daysLeft, dailyTarget, curW, startW, remainKg, pct, onTrack, today, kVal, kInfo, syncing, lastSynced, sync, weeklyAdvice, userEmail: user?.email ?? null }
 
   const syncLabel = (() => {
     if (!lastSynced) return '未同期'

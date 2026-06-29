@@ -17,11 +17,11 @@ export interface QuotaEstimate {
 }
 
 /** Today's (JST) total tokens and the moving-average tokens per question. */
-async function todayUsage(provider = 'groq'): Promise<{ used: number; avg: number; count: number }> {
+async function todayUsage(userId: string, provider = 'groq'): Promise<{ used: number; avg: number; count: number }> {
   const rows = await sql`
     SELECT prompt_tokens, comp_tokens
     FROM llm_usage
-    WHERE provider = ${provider}
+    WHERE user_id = ${userId} AND provider = ${provider}
       AND DATE(used_at AT TIME ZONE 'Asia/Tokyo') = DATE(NOW() AT TIME ZONE 'Asia/Tokyo')
     ORDER BY used_at DESC
   ` as { prompt_tokens: number; comp_tokens: number }[]
@@ -32,7 +32,7 @@ async function todayUsage(provider = 'groq'): Promise<{ used: number; avg: numbe
   const recent = await sql`
     SELECT prompt_tokens, comp_tokens
     FROM llm_usage
-    WHERE provider = ${provider}
+    WHERE user_id = ${userId} AND provider = ${provider}
     ORDER BY used_at DESC
     LIMIT 5
   ` as { prompt_tokens: number; comp_tokens: number }[]
@@ -49,8 +49,8 @@ async function todayUsage(provider = 'groq'): Promise<{ used: number; avg: numbe
  * remainingRpd comes from the most recent Groq response header (persisted by the
  * caller); if unknown, only the token budget bounds the estimate.
  */
-export async function estimateQuota(remainingRpd: number | null = null, provider = 'groq'): Promise<QuotaEstimate> {
-  const { used, avg } = await todayUsage(provider)
+export async function estimateQuota(userId: string, remainingRpd: number | null = null, provider = 'groq'): Promise<QuotaEstimate> {
+  const { used, avg } = await todayUsage(userId, provider)
   const remainingTokens = Math.max(0, TPD_LIMIT - used)
   const byTokens = Math.floor(remainingTokens / avg)
   const remaining = remainingRpd != null ? Math.min(remainingRpd, byTokens) : byTokens
@@ -65,25 +65,26 @@ export async function estimateQuota(remainingRpd: number | null = null, provider
 }
 
 /** Record one LLM call's token usage. */
-export async function recordUsage(promptTokens: number, compTokens: number, provider = 'groq'): Promise<void> {
+export async function recordUsage(userId: string, promptTokens: number, compTokens: number, provider = 'groq'): Promise<void> {
   await sql`
-    INSERT INTO llm_usage (provider, prompt_tokens, comp_tokens)
-    VALUES (${provider}, ${promptTokens}, ${compTokens})
+    INSERT INTO llm_usage (user_id, provider, prompt_tokens, comp_tokens)
+    VALUES (${userId}, ${provider}, ${promptTokens}, ${compTokens})
   `
 }
 
-/** Persist the latest header-reported remaining RPD so GET can show it without a call. */
-const rpdCache: { value: number | null; at: number } = { value: null, at: 0 }
+/** Per-user cache of the latest header-reported remaining RPD so GET can show it
+ * without a call. RPD is tied to the API key, which can be per-user (BYOK). */
+const rpdCache = new Map<string, { value: number | null; at: number }>()
 
-export function cacheRpd(rl: RateLimit): void {
+export function cacheRpd(userId: string, rl: RateLimit): void {
   if (rl.remainingRequests != null) {
-    rpdCache.value = rl.remainingRequests
-    rpdCache.at = Date.now()
+    rpdCache.set(userId, { value: rl.remainingRequests, at: Date.now() })
   }
 }
 
-export function getCachedRpd(): number | null {
+export function getCachedRpd(userId: string): number | null {
+  const hit = rpdCache.get(userId)
   // Treat as stale after 10 min (RPD resets daily, but a stale value is only a hint).
-  if (Date.now() - rpdCache.at > 10 * 60 * 1000) return null
-  return rpdCache.value
+  if (!hit || Date.now() - hit.at > 10 * 60 * 1000) return null
+  return hit.value
 }

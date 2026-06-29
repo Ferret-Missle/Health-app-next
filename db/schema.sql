@@ -1,21 +1,27 @@
--- Run once against your Neon database to create the schema
+-- Run once against your Neon database to create the schema.
+-- Multi-user: every data table is partitioned by user_id (the Firebase UID).
+-- Existing single-user databases are migrated by scripts/migrate.mjs, which
+-- backfills user_id from LEGACY_OWNER_UID and rewrites the keys below.
 
 -- access_token / refresh_token are encrypted at rest (AES-256-GCM, see lib/crypto.ts).
 -- Stored as "enc:v1:<iv>:<tag>:<ciphertext>"; legacy plaintext rows are still readable.
 CREATE TABLE IF NOT EXISTS oauth_tokens (
-  provider      TEXT        PRIMARY KEY,
+  user_id       TEXT        NOT NULL,
+  provider      TEXT        NOT NULL,
   access_token  TEXT        NOT NULL,
   refresh_token TEXT,
   expires_at    TIMESTAMPTZ NOT NULL,
   created_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ DEFAULT NOW()
+  updated_at    TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, provider)
 );
 
--- Daily time-series: one row per JST calendar date
+-- Daily time-series: one row per (user, JST calendar date)
 CREATE TABLE IF NOT EXISTS daily_data (
-  date           DATE        PRIMARY KEY,   -- JST date e.g. 2026-06-20
+  user_id        TEXT        NOT NULL,
+  date           DATE        NOT NULL,        -- JST date e.g. 2026-06-20
   -- Google Fit: activity
-  burn_kcal      INTEGER,                   -- total calories (BMR + active)
+  burn_kcal      INTEGER,                     -- total calories (BMR + active)
   steps          INTEGER,
   heart_rate_avg INTEGER,
   sleep_min      INTEGER,
@@ -24,52 +30,56 @@ CREATE TABLE IF NOT EXISTS daily_data (
   body_fat_pct   NUMERIC(5,2),
   -- FatSecret: intake
   intake_kcal    INTEGER,
-  p_g            NUMERIC(6,1),              -- protein g
-  f_g            NUMERIC(6,1),              -- fat g
-  c_g            NUMERIC(6,1),              -- carbs g
-  foods          TEXT,                      -- that day's logged food names (e.g. "サラダチキン×1, おにぎり×2")
+  p_g            NUMERIC(6,1),                -- protein g
+  f_g            NUMERIC(6,1),                -- fat g
+  c_g            NUMERIC(6,1),                -- carbs g
+  foods          TEXT,                        -- that day's logged food names (e.g. "サラダチキン×1, おにぎり×2")
   created_at     TIMESTAMPTZ DEFAULT NOW(),
-  updated_at     TIMESTAMPTZ DEFAULT NOW()
+  updated_at     TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, date)
 );
 
 -- Add foods to pre-existing tables (idempotent).
 ALTER TABLE daily_data ADD COLUMN IF NOT EXISTS foods TEXT;
 
--- LLM usage tracking for Groq quota self-management (FR-4.5 / NFR-7)
+-- LLM usage tracking for Groq quota self-management (FR-4.5 / NFR-7). Per-user:
+-- each user gets their own daily token budget.
 CREATE TABLE IF NOT EXISTS llm_usage (
   id            SERIAL      PRIMARY KEY,
+  user_id       TEXT        NOT NULL,
   provider      TEXT        NOT NULL DEFAULT 'groq',
   used_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   prompt_tokens INTEGER     NOT NULL DEFAULT 0,
   comp_tokens   INTEGER     NOT NULL DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS llm_usage_date_idx ON llm_usage (DATE(used_at AT TIME ZONE 'Asia/Tokyo'));
+CREATE INDEX IF NOT EXISTS llm_usage_user_date_idx
+  ON llm_usage (user_id, DATE(used_at AT TIME ZONE 'Asia/Tokyo'));
 
 -- AI advice history (FR-4.4). kind = 'manual' | 'weekly'. week_start is the JST
 -- Sunday that anchors a weekly auto-run, so we run the weekly advice at most once
--- per week (the "skip if already done this week" catch-up check).
+-- per week per user (the "skip if already done this week" catch-up check).
 CREATE TABLE IF NOT EXISTS advice_log (
   id         SERIAL      PRIMARY KEY,
+  user_id    TEXT        NOT NULL,
   kind       TEXT        NOT NULL DEFAULT 'manual',
   week_start DATE,                              -- set for kind = 'weekly'
   advice     TEXT        NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- At most one weekly run per week.
+-- At most one weekly run per week per user.
 CREATE UNIQUE INDEX IF NOT EXISTS advice_log_weekly_uniq
-  ON advice_log (week_start) WHERE kind = 'weekly';
+  ON advice_log (user_id, week_start) WHERE kind = 'weekly';
 
--- User goal/preferences. Single-user app: one row pinned to id = 1.
+-- User goal/preferences. One row per user, keyed by user_id.
 CREATE TABLE IF NOT EXISTS user_settings (
-  id          INTEGER     PRIMARY KEY DEFAULT 1,
+  user_id     TEXT        PRIMARY KEY,
   target_kg   NUMERIC(5,2) NOT NULL DEFAULT 72.0,
   target_days INTEGER     NOT NULL DEFAULT 86,   -- legacy, superseded by target_date
   target_date DATE,                              -- absolute goal date; days-left is derived from it
   llm         TEXT        NOT NULL DEFAULT 'groq',
-  updated_at  TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT user_settings_singleton CHECK (id = 1)
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Add target_date to pre-existing tables (idempotent).

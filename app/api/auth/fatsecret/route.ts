@@ -3,16 +3,18 @@
 // short-lived httpOnly cookie (it is not a long-term secret).
 import { type NextRequest, NextResponse } from 'next/server'
 import { getRequestToken, authorizeUrl } from '@/lib/fatsecret-auth'
-import { ownerGuard } from '@/lib/firebase-admin'
-import { randomState, setStateCookie, FATSECRET_STATE_COOKIE } from '@/lib/oauth-state'
+import { userGuard } from '@/lib/firebase-admin'
+import { randomState, setStateCookieWithUid, FATSECRET_STATE_COOKIE } from '@/lib/oauth-state'
 import { appBaseUrl } from '@/lib/app-url'
 
-// Owner-guarded: called via authFetch (Bearer), returns the authorize URL as
+// Allow-list-guarded: called via authFetch (Bearer), returns the authorize URL as
 // JSON for the client to navigate to. OAuth 1.0 has no `state` param, so we add
-// our own state cookie checked by the callback to block forged callbacks.
+// our own state cookie (with the linking user's uid) checked by the callback to
+// block forged callbacks and identify which user is linking.
 export async function GET(req: NextRequest) {
-  const denied = await ownerGuard(req)
-  if (denied) return denied
+  const auth = await userGuard(req)
+  if (auth instanceof NextResponse) return auth
+  const { uid } = auth
 
   const base = appBaseUrl()
   const callback = `${base}/api/auth/fatsecret/callback`
@@ -34,6 +36,6 @@ export async function GET(req: NextRequest) {
     maxAge: 600, // 10 min
     path: '/',
   })
-  setStateCookie(res, FATSECRET_STATE_COOKIE, state)
+  setStateCookieWithUid(res, FATSECRET_STATE_COOKIE, state, uid)
   return res
 }

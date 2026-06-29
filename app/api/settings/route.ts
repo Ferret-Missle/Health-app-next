@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { sql } from '@/lib/db'
-import { ownerGuard } from '@/lib/firebase-admin'
+import { userGuard } from '@/lib/firebase-admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,11 +22,12 @@ function defaults() {
 
 // GET: current goal settings (defaults if no row yet).
 export async function GET(req: NextRequest) {
-  const denied = await ownerGuard(req)
-  if (denied) return denied
+  const auth = await userGuard(req)
+  if (auth instanceof NextResponse) return auth
+  const { uid } = auth
 
   const rows = await sql`SELECT target_kg, target_days, target_date::text AS target_date, llm
-                         FROM user_settings WHERE id = 1` as SettingsRow[]
+                         FROM user_settings WHERE user_id = ${uid}` as SettingsRow[]
   if (rows.length === 0) return NextResponse.json(defaults())
 
   const row = rows[0]
@@ -42,8 +43,9 @@ export async function GET(req: NextRequest) {
 
 // PUT: upsert goal settings. Body: { tgtW?, tgtDate?, llm? }
 export async function PUT(req: NextRequest) {
-  const denied = await ownerGuard(req)
-  if (denied) return denied
+  const auth = await userGuard(req)
+  if (auth instanceof NextResponse) return auth
+  const { uid } = auth
 
   const body = await req.json().catch(() => ({})) as { tgtW?: number; tgtDate?: string; llm?: string }
 
@@ -55,9 +57,9 @@ export async function PUT(req: NextRequest) {
     : todayPlusDaysJst(DEFAULT_DAYS)
 
   await sql`
-    INSERT INTO user_settings (id, target_kg, target_date, llm)
-    VALUES (1, ${tgtW}, ${tgtDate}, ${llm})
-    ON CONFLICT (id) DO UPDATE SET
+    INSERT INTO user_settings (user_id, target_kg, target_date, llm)
+    VALUES (${uid}, ${tgtW}, ${tgtDate}, ${llm})
+    ON CONFLICT (user_id) DO UPDATE SET
       target_kg   = ${tgtW},
       target_date = ${tgtDate},
       llm         = ${llm},

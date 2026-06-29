@@ -2,7 +2,7 @@
 // token (using the request-token-secret stashed in the cookie) and persist it.
 import { type NextRequest, NextResponse } from 'next/server'
 import { getAccessToken, saveFatSecretToken } from '@/lib/fatsecret-auth'
-import { FATSECRET_STATE_COOKIE } from '@/lib/oauth-state'
+import { parseStateCookie, FATSECRET_STATE_COOKIE } from '@/lib/oauth-state'
 import { appBaseUrl } from '@/lib/app-url'
 
 export async function GET(req: NextRequest) {
@@ -12,17 +12,18 @@ export async function GET(req: NextRequest) {
   const verifier   = searchParams.get('oauth_verifier')
   const reqSecret  = req.cookies.get('fs_req_secret')?.value
   // OAuth 1.0 returns no `state`, so we just confirm our state cookie is present
-  // — only our owner-guarded start route could have set this httpOnly value.
-  const stateCookie = req.cookies.get(FATSECRET_STATE_COOKIE)?.value
+  // — only our guarded start route could have set this httpOnly value. It carries
+  // the linking user's uid as `${uid}:${state}`.
+  const parsed = parseStateCookie(req.cookies.get(FATSECRET_STATE_COOKIE)?.value)
 
-  if (!oauthToken || !verifier || !reqSecret || !stateCookie) {
+  if (!oauthToken || !verifier || !reqSecret || !parsed) {
     return NextResponse.redirect(`${base}/?fatsecret_error=missing_params`)
   }
 
   let token: string, secret: string
   try {
     ({ token, secret } = await getAccessToken(oauthToken, reqSecret, verifier))
-    await saveFatSecretToken(token, secret)
+    await saveFatSecretToken(parsed.uid, token, secret)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown'
     return NextResponse.redirect(`${base}/?fatsecret_error=${encodeURIComponent(msg)}`)

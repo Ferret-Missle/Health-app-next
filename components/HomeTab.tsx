@@ -6,8 +6,12 @@ import { getByokKey } from '@/lib/byok'
 import { fx } from '@/lib/data'
 import InfoTip from './InfoTip'
 
-export default function HomeTab({ s, c, data, daysLeft, dailyTarget, curW, remainKg, pct, onTrack, today, kVal, weeklyAdvice }: TabProps) {
+export default function HomeTab({ s, c, data, daysLeft, dailyTarget, curW, remainKg, pct, onTrack, today, kVal, weeklyAdvice, userEmail }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
+  // Today's date in JST (replaces a former hardcoded placeholder date).
+  const todayLabel = new Date().toLocaleDateString('ja-JP', {
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', timeZone: 'Asia/Tokyo',
+  })
   const { status, advice, quota, error, ask } = useAdvice()
   // Show the manual result if there is one; otherwise fall back to this week's
   // auto-generated advice (FR-4.4) so the card isn't empty on launch.
@@ -41,7 +45,12 @@ export default function HomeTab({ s, c, data, daysLeft, dailyTarget, curW, remai
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, animation: 'fadeUp .35s ease both' }}>
 
-      <div style={{ fontSize: 13, color: c.onSurfVar, marginTop: 6 }}>2026年6月20日 (土)</div>
+      <div style={{
+        fontSize: 13, color: c.onSurfVar, marginTop: 6,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {todayLabel}{userEmail ? ` ・ ${userEmail}` : ''}
+      </div>
 
       {/* Today KPI card */}
       <div style={{ background: c.surfLow, borderRadius: 24, padding: '22px 22px 18px', display: 'flex', flexDirection: 'column', gap: 2 }}>
