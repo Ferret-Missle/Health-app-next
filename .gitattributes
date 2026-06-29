@@ -1,0 +1,5 @@
+# Keep scripts and SQL LF-only. The migration runner parses db/schema.sql by
+# stripping `--` comments and splitting on `;`; a Windows CRLF checkout breaks the
+# comment strip and can split a statement mid-comment.
+*.mjs text eol=lf
+*.sql text eol=lf
