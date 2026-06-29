@@ -159,8 +159,12 @@ async function applySchema() {
   const rawSchema = readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8')
   // Strip `--` comments (full-line and inline) so a `;` inside a comment can't
   // split a statement, then split on semicolons (schema has no `--` or `;` inside
-  // string literals).
-  const schema = rawSchema.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
+  // string literals). Normalize CRLF first: on a Windows checkout the trailing
+  // `\r` defeats the `/--.*$/` strip (`.` and `$` don't span `\r`), which would
+  // leave a `;`-containing comment intact and split a statement mid-comment.
+  const schema = rawSchema
+    .replace(/\r\n?/g, '\n')
+    .split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
   const statements = schema.split(';').map(s => s.trim()).filter(Boolean)
   for (const stmt of statements) {
     await sql.query(stmt)
