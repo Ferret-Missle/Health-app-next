@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { L, D } from '@/lib/colors'
 import type { C } from '@/lib/colors'
 import { movingAvg, daysUntil } from '@/lib/data'
-import { useHealthData } from '@/lib/useHealthData'
+import { useHealthData, RECENT_SYNC_DAYS, FULL_SYNC_DAYS } from '@/lib/useHealthData'
+import { useLinkStatus } from '@/lib/useLinkStatus'
 import { useAuth } from '@/lib/useAuth'
 import { useSettings } from '@/lib/useSettings'
 import { useWeeklyAdvice } from '@/lib/useWeeklyAdvice'
@@ -46,18 +47,20 @@ function AppInner() {
 
   const { data: DATA, syncing, progress, lastSynced, sync } = useHealthData()
   const { user, logout } = useAuth()
+  const link = useLinkStatus()
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   // Surface the result of an OAuth link flow. The provider callbacks redirect
   // back with ?auth=success / ?auth_error=… / ?fatsecret=success / ?fatsecret_error=…;
   // without this the user returns to the app with no idea it failed (or why).
   const [linkNotice, setLinkNotice] = useState<{ ok: boolean; text: string } | null>(null)
+  const justLinkedRef = useRef(false)   // returned from a successful link → full sync
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
     let n: { ok: boolean; text: string } | null = null
-    if (q.get('auth') === 'success')            n = { ok: true,  text: 'Google Health と連携しました。' }
+    if (q.get('auth') === 'success')            { n = { ok: true,  text: 'Google Health と連携しました。' }; justLinkedRef.current = true }
     else if (q.get('auth_error'))               n = { ok: false, text: `Google 連携に失敗しました: ${q.get('auth_error')}` }
-    else if (q.get('fatsecret') === 'success')  n = { ok: true,  text: 'FatSecret と連携しました。' }
+    else if (q.get('fatsecret') === 'success')  { n = { ok: true,  text: 'FatSecret と連携しました。' }; justLinkedRef.current = true }
     else if (q.get('fatsecret_error'))          n = { ok: false, text: `FatSecret 連携に失敗しました: ${q.get('fatsecret_error')}` }
     if (n) {
       setLinkNotice(n)
@@ -66,6 +69,21 @@ function AppInner() {
       window.history.replaceState({}, '', url.pathname + url.search + url.hash)
     }
   }, [])
+
+  // Auto-sync once link status is known: a full-period sync right after linking,
+  // otherwise a recent (7-day) sync on launch. Skipped entirely when no provider
+  // is linked (nothing to pull).
+  const autoSyncRan = useRef(false)
+  useEffect(() => {
+    if (link.loading || autoSyncRan.current) return
+    if (justLinkedRef.current) {
+      autoSyncRan.current = true
+      void sync(FULL_SYNC_DAYS)
+    } else if (link.google || link.fatsecret) {
+      autoSyncRan.current = true
+      void sync(RECENT_SYNC_DAYS)
+    }
+  }, [link.loading, link.google, link.fatsecret, sync])
 
   const set: Updater = (patch) => setS(prev => ({ ...prev, ...patch }))
 
@@ -87,7 +105,10 @@ function AppInner() {
     typography: { fontFamily: 'Roboto, "Noto Sans JP", system-ui, sans-serif' },
   })
 
-  const handleSync = () => { void sync() }
+  const handleSync = () => { void sync(RECENT_SYNC_DAYS) }
+
+  // Friendly "how much is syncing" label for the progress row.
+  const syncScopeLabel = (d: number) => d >= FULL_SYNC_DAYS ? '全期間' : `直近${d}日分`
 
   // Only days with a measured weight feed the weight-based stats (others are 0).
   const weighed     = DATA.filter(x => x.w > 0)
@@ -240,7 +261,7 @@ function AppInner() {
               padding: '4px 16px', background: c.surface, zIndex: 5,
               fontSize: 11, color: c.onSurfVar,
             }}>
-              <span>{progress.label}</span>
+              <span>{syncScopeLabel(progress.days)}・{progress.label}</span>
               <span style={{ fontFeatureSettings: '"tnum"' }}>{progress.pct}%</span>
             </div>
           )}

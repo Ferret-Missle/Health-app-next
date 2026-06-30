@@ -2,9 +2,16 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { DATA, rowsToDayData, type DayData, type DailyRow } from './data'
 import { authFetch } from './authFetch'
 
+// Sync scopes: launch + the manual sync button pull the recent window; linking
+// and the settings "全期間同期" button pull the full history (capped at 365 in
+// the route, which is also the display-window ceiling).
+export const RECENT_SYNC_DAYS = 7
+export const FULL_SYNC_DAYS = 365
+
 export interface SyncProgress {
   pct:   number   // 0–100
   label: string   // current step description
+  days:  number   // how many days this sync is pulling (for the UI label)
 }
 
 interface HealthData {
@@ -58,7 +65,7 @@ export function useHealthData(days = 120): HealthData {
     if (syncingRef.current) return
     syncingRef.current = true
     setSyncing(true)
-    setProgress({ pct: 0, label: '同期を開始しています…' })
+    setProgress({ pct: 0, label: '同期を開始しています…', days: n })
     try {
       const res = await authFetch('/api/health/sync', {
         method:  'POST',
@@ -85,7 +92,7 @@ export function useHealthData(days = 120): HealthData {
           const evt = JSON.parse(line.slice(5).trim()) as {
             type: string; pct: number; label: string; errors?: string[]
           }
-          setProgress({ pct: evt.pct, label: evt.label })
+          setProgress({ pct: evt.pct, label: evt.label, days: n })
           if (evt.type === 'done') doneEvent = evt
         }
       }
