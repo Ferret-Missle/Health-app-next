@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { DATA, rowsToDayData, type DayData, type DailyRow } from './data'
 import { authFetch } from './authFetch'
 
-// Sync scopes: launch + the manual sync button pull the recent window; linking
-// and the settings "全期間同期" button pull the full history (capped at 365 in
-// the route, which is also the display-window ceiling).
+// Sync scopes. Launch is the lightest (just catch up the last few days); the
+// manual sync button pulls a slightly wider recent window; linking and the
+// settings "全期間同期" button pull the full history (capped at 365 in the
+// route, which is also the display-window ceiling).
+export const LAUNCH_SYNC_DAYS = 3
 export const RECENT_SYNC_DAYS = 7
 export const FULL_SYNC_DAYS = 365
 
