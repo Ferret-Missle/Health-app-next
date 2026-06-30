@@ -13,6 +13,8 @@ export const viewport: Viewport = {
   // Lock zoom so the layout always matches the physical screen width on phones.
   maximumScale: 1,
   viewportFit: 'cover',
+  // Brand-green mobile browser chrome, matching the app icon.
+  themeColor: '#175C49',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
