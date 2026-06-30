@@ -153,6 +153,14 @@ function ScatterChart({ d, c }: { d: DayData[], kVal: number, c: C }) {
   const iw = W - pl - pr, ih = H - pt - pb
 
   const dw   = d.filter(x => x.w > 0)   // only days with a measured weight
+  if (dw.length < 2) {
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+        <text x={W / 2} y={H / 2} textAnchor="middle" fill={c.onSurfVar} fontSize={11}
+          fontFamily="Roboto, sans-serif">この期間の体重データが不足しています</text>
+      </svg>
+    )
+  }
   const xs   = dw.map(x => x.cum), ys = dw.map(x => x.w)
   const xmin = Math.min(...xs), xmax = Math.max(...xs)
   const ymin = Math.min(...ys) - 0.3, ymax = Math.max(...ys) + 0.3
@@ -259,6 +267,36 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal, 
     </button>
   )
 
+  // Generic period chip (used by the trajectory and weight×cum switchers).
+  const rangeBtn = (active: boolean, lbl: string, onClick: () => void) => (
+    <button type="button" onClick={onClick} style={{
+      border: `1px solid ${active ? 'transparent' : c.outlineVar}`, borderRadius: 999,
+      background: active ? c.secondaryC : 'transparent', color: active ? c.onSecC : c.onSurfVar,
+      fontSize: 11, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', padding: '5px 11px',
+    }}>{lbl}</button>
+  )
+
+  // Trajectory window: most recent N days (0 = all). Prediction horizon is added
+  // inside the chart, so this only narrows the measured/observed portion.
+  const tWindow = s.tRange === 0 ? data : data.slice(Math.max(0, data.length - s.tRange))
+
+  // weight×cum (k) window: most recent N days (0 = all). Display-only — the k that
+  // drives predictions (kVal prop) stays the all-data calibration.
+  const kWindow = s.kRange === 0 ? data : data.slice(Math.max(0, data.length - s.kRange))
+  const windowK = (() => {
+    const dw = kWindow.filter(x => x.w > 0)
+    const nn = dw.length
+    if (nn < 3) return { k: 7200, n: nn, ok: false }
+    const xs = dw.map(x => x.cum), ys = dw.map(x => x.w)
+    const mxx = xs.reduce((a, b) => a + b, 0) / nn, myy = ys.reduce((a, b) => a + b, 0) / nn
+    let num = 0, den = 0
+    for (let i = 0; i < nn; i++) { num += (xs[i] - mxx) * (ys[i] - myy); den += (xs[i] - mxx) ** 2 }
+    const slope = num / (den || 1)
+    const raw = slope !== 0 && Number.isFinite(slope) ? -1 / slope : 0
+    const ok = raw >= 4000 && raw <= 12000
+    return { k: ok ? Math.round(raw / 50) * 50 : 7200, n: nn, ok }
+  })()
+
   // Human-readable progress toward k calibration.
   const weighedDays = data.filter(x => x.w > 0).length
   const kStatus = kInfo.calibrated
@@ -333,8 +371,14 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal, 
             {onTrack ? 'オントラック' : 'オフトラック'}
           </span>
         </div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', padding: '0 4px' }}>
+          {rangeBtn(s.tRange === 7,  '7日',   () => set({ tRange: 7 }))}
+          {rangeBtn(s.tRange === 30, '30日',  () => set({ tRange: 30 }))}
+          {rangeBtn(s.tRange === 90, '90日',  () => set({ tRange: 90 }))}
+          {rangeBtn(s.tRange === 0,  '全期間', () => set({ tRange: 0 }))}
+        </div>
         <div style={{ margin: '8px 0 2px' }}>
-          <TrajectoryChart d={data} tgtW={s.tgtW} days={daysLeft} k={kVal} c={c} />
+          <TrajectoryChart d={tWindow} tgtW={s.tgtW} days={daysLeft} k={kVal} c={c} />
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 4px 0', fontSize: 11, color: c.onSurfVar }}>
           {[
@@ -362,23 +406,30 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal, 
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 11, color: c.onSurfVar, display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-              個人係数 k
+              {s.kRange === 0 ? '個人係数 k' : 'この期間の k'}
               <span style={{
                 fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999,
-                background: kInfo.calibrated ? c.onTrackC : c.surfHighest,
-                color:      kInfo.calibrated ? c.onTrack  : c.onSurfVar,
-              }}>{kInfo.calibrated ? '実測' : '既定'}</span>
+                background: windowK.ok ? c.onTrackC : c.surfHighest,
+                color:      windowK.ok ? c.onTrack  : c.onSurfVar,
+              }}>{windowK.ok ? '実測' : '範囲外→既定'}</span>
             </div>
             <div style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"', color: c.primary }}>
-              ≈ {kVal.toLocaleString('ja-JP')}
+              ≈ {windowK.k.toLocaleString('ja-JP')}
             </div>
           </div>
         </div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', padding: '0 4px' }}>
+          {rangeBtn(s.kRange === 10, '10日',  () => set({ kRange: 10 }))}
+          {rangeBtn(s.kRange === 30, '30日',  () => set({ kRange: 30 }))}
+          {rangeBtn(s.kRange === 0,  '全期間', () => set({ kRange: 0 }))}
+        </div>
         <div style={{ margin: '8px 0 2px' }}>
-          <ScatterChart d={data} kVal={kVal} c={c} />
+          <ScatterChart d={kWindow} kVal={kVal} c={c} />
         </div>
         <div style={{ fontSize: 11, color: c.onSurfVar, padding: '4px 4px 0' }}>
-          {kStatus}
+          {s.kRange === 0
+            ? kStatus
+            : `選択期間(${s.kRange}日)の傾きから算出した参考値です（測定 ${windowK.n}日分）。予測(トラジェクトリ/ホーム)には全期間のk=${kVal.toLocaleString('ja-JP')}を使用します。`}
         </div>
       </div>
 
