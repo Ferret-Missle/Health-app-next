@@ -31,6 +31,9 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
 
   const linked = useLinkStatus()
 
+  // Range for the manual "この範囲で同期" control (30 / 60 / 全期間 days).
+  const [syncRange, setSyncRange] = useState<number>(30)
+
   // The OAuth start routes are owner-guarded, so we fetch them with a Bearer
   // token (a plain <a href> can't carry one) and navigate to the returned URL.
   const [linkBusy, setLinkBusy] = useState<string | null>(null)
@@ -294,18 +297,32 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
           <span className="ms" style={{ fontSize: 20, animation: syncing ? 'spin 1s linear infinite' : 'none' }}>sync</span>
           {syncing ? '同期中…' : `今すぐ同期(直近7日) ・ 最終 ${lastSyncedLabel}`}
         </button>
-        <button type="button" onClick={() => { void sync(FULL_SYNC_DAYS) }} disabled={syncing} style={{
-          marginTop: 10, width: '100%', height: 46,
-          border: 'none', background: c.secondaryC, borderRadius: 999,
-          color: c.onSecC, fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
-          cursor: syncing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-          opacity: syncing ? .6 : 1,
-        }}>
-          <span className="ms" style={{ fontSize: 20 }}>history</span>
-          全期間を同期
-        </button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <select value={syncRange} onChange={e => setSyncRange(Number(e.target.value))} disabled={syncing}
+            aria-label="同期する期間" style={{
+              flex: 1, height: 46, borderRadius: 999, padding: '0 16px',
+              border: `1px solid ${c.outline}`, background: c.surf, color: c.onSurf,
+              fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+              cursor: syncing ? 'not-allowed' : 'pointer',
+              fontFeatureSettings: '"tnum"',
+            }}>
+            <option value={30}>過去30日</option>
+            <option value={60}>過去60日</option>
+            <option value={FULL_SYNC_DAYS}>全期間</option>
+          </select>
+          <button type="button" onClick={() => { void sync(syncRange) }} disabled={syncing} style={{
+            flex: 'none', minWidth: 110, height: 46,
+            border: 'none', background: c.secondaryC, borderRadius: 999,
+            color: c.onSecC, fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+            cursor: syncing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            opacity: syncing ? .6 : 1,
+          }}>
+            <span className="ms" style={{ fontSize: 20 }}>history</span>
+            この範囲で同期
+          </button>
+        </div>
         <div style={{ fontSize: 10.5, color: c.onSurfVar, opacity: .8, lineHeight: '15px', marginTop: 8 }}>
-          全期間同期は過去最大1年分を取得します（データ量により時間がかかる場合があります）。
+          期間を選んで同期します。全期間は過去最大1年分のため、データ量により時間がかかる場合があります。
         </div>
       </div>
 
