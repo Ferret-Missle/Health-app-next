@@ -22,7 +22,9 @@ export async function POST(req: NextRequest) {
   const { uid } = auth
 
   const body = await req.json().catch(() => ({})) as { days?: number }
-  const days = Math.min(body.days ?? 7, 90)
+  // Recent syncs send 7; the full-period sync (post-link / settings button) sends
+  // up to a year. Cap at 365 — that's also the display window ceiling.
+  const days = Math.min(Math.max(body.days ?? 7, 1), 365)
 
   // JST-midnight-aligned window
   const jstOffset = 9 * 3600 * 1000

@@ -10,6 +10,7 @@ import type { QuotaInfo } from '@/lib/useAdvice'
 import { authFetch } from '@/lib/authFetch'
 import { getByokKey, setByokKey } from '@/lib/byok'
 import { useLinkStatus } from '@/lib/useLinkStatus'
+import { RECENT_SYNC_DAYS, FULL_SYNC_DAYS } from '@/lib/useHealthData'
 import { fx } from '@/lib/data'
 import { VERSION_LABEL } from '@/lib/version'
 
@@ -280,19 +281,32 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 500 }}>自動取得スコープ</div>
-            <div style={{ fontSize: 11, color: c.onSurfVar }}>起動時SWR + 前面復帰 + 手動</div>
+            <div style={{ fontSize: 11, color: c.onSurfVar }}>起動時・手動は直近7日 / 連携直後は全期間</div>
           </div>
           <span style={{ fontSize: 13, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>直近 7日</span>
         </div>
-        <button type="button" onClick={() => { void sync() }} disabled={syncing} style={{
+        <button type="button" onClick={() => { void sync(RECENT_SYNC_DAYS) }} disabled={syncing} style={{
           marginTop: 16, width: '100%', height: 46,
           border: `1px solid ${c.outline}`, background: 'none', borderRadius: 999,
           color: c.primary, fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
           cursor: syncing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         }}>
           <span className="ms" style={{ fontSize: 20, animation: syncing ? 'spin 1s linear infinite' : 'none' }}>sync</span>
-          {syncing ? '同期中…' : `今すぐ同期 ・ 最終 ${lastSyncedLabel}`}
+          {syncing ? '同期中…' : `今すぐ同期(直近7日) ・ 最終 ${lastSyncedLabel}`}
         </button>
+        <button type="button" onClick={() => { void sync(FULL_SYNC_DAYS) }} disabled={syncing} style={{
+          marginTop: 10, width: '100%', height: 46,
+          border: 'none', background: c.secondaryC, borderRadius: 999,
+          color: c.onSecC, fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
+          cursor: syncing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          opacity: syncing ? .6 : 1,
+        }}>
+          <span className="ms" style={{ fontSize: 20 }}>history</span>
+          全期間を同期
+        </button>
+        <div style={{ fontSize: 10.5, color: c.onSurfVar, opacity: .8, lineHeight: '15px', marginTop: 8 }}>
+          全期間同期は過去最大1年分を取得します（データ量により時間がかかる場合があります）。
+        </div>
       </div>
 
       {/* Release version footer */}
