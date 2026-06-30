@@ -17,6 +17,8 @@ export interface State {
   pfcOff:   number
   wRange:   number       // weight chart window: 30 | 90 | 0 (all)
   wOff:     number       // weight chart period offset (0 = latest)
+  tRange:   number       // trajectory window: 7 | 30 | 90 | 0 (all)
+  kRange:   number       // weight×cum-balance (k) window: 10 | 30 | 0 (all)
 }
 
 export type Updater = (patch: Partial<State>) => void

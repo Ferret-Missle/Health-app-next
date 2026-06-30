@@ -8,6 +8,7 @@ import type { C } from '@/lib/colors'
 import { movingAvg, daysUntil } from '@/lib/data'
 import { useHealthData, RECENT_SYNC_DAYS, FULL_SYNC_DAYS } from '@/lib/useHealthData'
 import { useLinkStatus } from '@/lib/useLinkStatus'
+import { loadUiPrefs, saveUiPrefs } from '@/lib/uiPrefs'
 import { useAuth } from '@/lib/useAuth'
 import { useSettings } from '@/lib/useSettings'
 import { useWeeklyAdvice } from '@/lib/useWeeklyAdvice'
@@ -43,6 +44,7 @@ function AppInner() {
     tgtW: 72.0, tgtDate: '', llm: 'groq',
     balOff: 0, grpOff: 0, calOff: 0, pfcOff: 0,
     wRange: 90, wOff: 0,
+    tRange: 0, kRange: 0,
   })
 
   const { data: DATA, syncing, progress, lastSynced, sync } = useHealthData()
@@ -86,6 +88,29 @@ function AppInner() {
   }, [link.loading, link.google, link.fatsecret, sync])
 
   const set: Updater = (patch) => setS(prev => ({ ...prev, ...patch }))
+
+  // Restore this user's saved period-switch selections once their uid is known,
+  // then persist any change. Stored per-uid in localStorage (see lib/uiPrefs).
+  const prefsLoaded = useRef(false)
+  useEffect(() => {
+    const uid = user?.uid
+    if (!uid || prefsLoaded.current) return
+    prefsLoaded.current = true
+    const p = loadUiPrefs(uid)
+    const patch: Partial<State> = {}
+    if (p.range  != null) patch.range  = p.range
+    if (p.view   != null) patch.view   = p.view
+    if (p.wRange != null) patch.wRange = p.wRange
+    if (p.tRange != null) patch.tRange = p.tRange
+    if (p.kRange != null) patch.kRange = p.kRange
+    if (Object.keys(patch).length) set(patch)
+  }, [user])
+
+  useEffect(() => {
+    const uid = user?.uid
+    if (!uid || !prefsLoaded.current) return
+    saveUiPrefs(uid, { range: s.range, view: s.view, wRange: s.wRange, tRange: s.tRange, kRange: s.kRange })
+  }, [user, s.range, s.view, s.wRange, s.tRange, s.kRange])
 
   // Persist goal settings to the cloud; load stored values on mount.
   useSettings(

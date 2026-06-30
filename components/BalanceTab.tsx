@@ -97,6 +97,12 @@ function BalanceChart({ series, view, range, dailyTarget, c }: {
       const top = Y(Math.max(0, x.d)), bh = Math.abs(Y(x.d) - y0)
       els.push(<rect key={`b${i}`} x={X(i) - bw / 2} y={top} width={bw} height={Math.max(1, bh)} rx={3}
         fill={x.d >= 0 ? c.credit : c.debit} />)
+      // 7-day view: print each day's balance just outside the bar's free end.
+      if (range === 7) {
+        const vy = x.d >= 0 ? Y(x.d) - 4 : Y(x.d) + 10
+        els.push(txtEl(`v${i}`, X(i), vy, `${x.d >= 0 ? '+' : '−'}${Math.round(Math.abs(x.d))}`, 'middle',
+          x.d >= 0 ? c.credit : c.debit, 8.5))
+      }
     })
     els.push(<line key="tl" x1={pl} x2={W - pr} y1={Y(per)} y2={Y(per)}
       stroke={c.onSurfVar} strokeWidth={1.6} strokeDasharray="5 4" />)
