@@ -6,7 +6,7 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { L, D } from '@/lib/colors'
 import type { C } from '@/lib/colors'
 import { movingAvg, daysUntil } from '@/lib/data'
-import { useHealthData, RECENT_SYNC_DAYS, FULL_SYNC_DAYS } from '@/lib/useHealthData'
+import { useHealthData, LAUNCH_SYNC_DAYS, RECENT_SYNC_DAYS, FULL_SYNC_DAYS } from '@/lib/useHealthData'
 import { useLinkStatus } from '@/lib/useLinkStatus'
 import { loadUiPrefs, saveUiPrefs } from '@/lib/uiPrefs'
 import { useAuth } from '@/lib/useAuth'
@@ -83,7 +83,7 @@ function AppInner() {
       void sync(FULL_SYNC_DAYS)
     } else if (link.google || link.fatsecret) {
       autoSyncRan.current = true
-      void sync(RECENT_SYNC_DAYS)
+      void sync(LAUNCH_SYNC_DAYS)
     }
   }, [link.loading, link.google, link.fatsecret, sync])
 
