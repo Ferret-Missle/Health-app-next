@@ -406,15 +406,17 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal, 
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 11, color: c.onSurfVar, display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-              {s.kRange === 0 ? '個人係数 k' : 'この期間の k'}
+              {s.kRange === 0 ? '全期間の k' : `表示期間(${s.kRange}日)の k`}
               <span style={{
                 fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999,
-                background: windowK.ok ? c.onTrackC : c.surfHighest,
-                color:      windowK.ok ? c.onTrack  : c.onSurfVar,
-              }}>{windowK.ok ? '実測' : '範囲外→既定'}</span>
+                background: c.surfHighest, color: c.onSurfVar,
+              }}>参考</span>
             </div>
             <div style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"', color: c.primary }}>
               ≈ {windowK.k.toLocaleString('ja-JP')}
+              <span style={{ fontSize: 10, fontWeight: 500, color: c.onSurfVar, marginLeft: 4 }}>
+                {windowK.ok ? '' : '(範囲外→既定)'}
+              </span>
             </div>
           </div>
         </div>
@@ -427,9 +429,10 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal, 
           <ScatterChart d={kWindow} kVal={kVal} c={c} />
         </div>
         <div style={{ fontSize: 11, color: c.onSurfVar, padding: '4px 4px 0' }}>
-          {s.kRange === 0
-            ? kStatus
-            : `選択期間(${s.kRange}日)の傾きから算出した参考値です（測定 ${windowK.n}日分）。予測(トラジェクトリ/ホーム)には全期間のk=${kVal.toLocaleString('ja-JP')}を使用します。`}
+          {`${s.kRange === 0 ? '全期間' : `表示期間(${s.kRange}日)`}の回帰の傾きから算出した参考値です（測定 ${windowK.n}日分）。予測(トラジェクトリ/ホーム)の判定には較正済みの k=${kVal.toLocaleString('ja-JP')} を使用します。`}
+        </div>
+        <div style={{ fontSize: 10.5, color: c.onSurfVar, opacity: .8, padding: '2px 4px 0' }}>
+          {kStatus}
         </div>
       </div>
 
