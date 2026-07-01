@@ -233,7 +233,7 @@ function BodyCompChart({ d, dark, c }: { d: DayData[], dark: boolean, c: C }) {
   )
 }
 
-export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal, kInfo }: TabProps) {
+export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal }: TabProps) {
   // Weight-trend window (independent period switcher: 30 / 90 / all + offset).
   const wWindow = (() => {
     if (s.wRange === 0) return data.slice()
@@ -283,33 +283,24 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal, 
   // weight×cum (k) window: most recent N days (0 = all). Display-only — the k that
   // drives predictions (kVal prop) stays the all-data calibration.
   const kWindow = s.kRange === 0 ? data : data.slice(Math.max(0, data.length - s.kRange))
+  // Actual regression-derived k for the window (raw value, not clamped). `ok`
+  // flags whether it sits in the plausible band; when it doesn't, predictions
+  // fall back to the fixed default (7,200).
   const windowK = (() => {
     const dw = kWindow.filter(x => x.w > 0)
     const nn = dw.length
-    if (nn < 3) return { k: 7200, n: nn, ok: false }
+    if (nn < 3) return { raw: null as number | null, ok: false, n: nn }
     const xs = dw.map(x => x.cum), ys = dw.map(x => x.w)
     const mxx = xs.reduce((a, b) => a + b, 0) / nn, myy = ys.reduce((a, b) => a + b, 0) / nn
     let num = 0, den = 0
     for (let i = 0; i < nn; i++) { num += (xs[i] - mxx) * (ys[i] - myy); den += (xs[i] - mxx) ** 2 }
     const slope = num / (den || 1)
-    const raw = slope !== 0 && Number.isFinite(slope) ? -1 / slope : 0
-    const ok = raw >= 4000 && raw <= 12000
-    return { k: ok ? Math.round(raw / 50) * 50 : 7200, n: nn, ok }
+    const rawRaw = slope !== 0 && Number.isFinite(slope) ? -1 / slope : NaN
+    if (!Number.isFinite(rawRaw)) return { raw: null as number | null, ok: false, n: nn }
+    const raw = Math.round(rawRaw / 50) * 50
+    return { raw, ok: raw >= 4000 && raw <= 12000, n: nn }
   })()
 
-  // Human-readable progress toward k calibration.
-  const weighedDays = data.filter(x => x.w > 0).length
-  const kStatus = kInfo.calibrated
-    ? `実測キャリブ済み（測定 ${weighedDays}日分）`
-    : kInfo.outOfRange
-      ? `測定は十分ですが値が不安定なため既定 7,200 を使用中（測定 ${weighedDays}日分）`
-      : (() => {
-          const parts: string[] = []
-          if (kInfo.daysShort > 0) parts.push(`あと ${kInfo.daysShort}日分の測定`)
-          if (kInfo.spanShort > 0) parts.push(`あと ${kInfo.spanShort}日の期間`)
-          const need = parts.length ? parts.join(' / ') : 'もう少しデータ'
-          return `既定 7,200 を使用中。実測キャリブまで ${need}（現在 測定 ${weighedDays}日分）`
-        })()
   const statusBg   = onTrack ? c.onTrackC : c.offTrackC
   const statusText = onTrack ? c.onTrack  : c.offTrack
 
@@ -412,11 +403,8 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal, 
                 background: c.surfHighest, color: c.onSurfVar,
               }}>参考</span>
             </div>
-            <div style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"', color: c.primary }}>
-              ≈ {windowK.k.toLocaleString('ja-JP')}
-              <span style={{ fontSize: 10, fontWeight: 500, color: c.onSurfVar, marginLeft: 4 }}>
-                {windowK.ok ? '' : '(範囲外→既定)'}
-              </span>
+            <div style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"', color: windowK.ok || windowK.raw == null ? c.primary : c.debit }}>
+              {windowK.raw == null ? '—' : `≈ ${windowK.raw.toLocaleString('ja-JP')}`}
             </div>
           </div>
         </div>
@@ -428,11 +416,17 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal, 
         <div style={{ margin: '8px 0 2px' }}>
           <ScatterChart d={kWindow} kVal={kVal} c={c} />
         </div>
-        <div style={{ fontSize: 11, color: c.onSurfVar, padding: '4px 4px 0' }}>
-          {`${s.kRange === 0 ? '全期間' : `表示期間(${s.kRange}日)`}の回帰の傾きから算出した参考値です（測定 ${windowK.n}日分）。予測(トラジェクトリ/ホーム)の判定には較正済みの k=${kVal.toLocaleString('ja-JP')} を使用します。`}
-        </div>
-        <div style={{ fontSize: 10.5, color: c.onSurfVar, opacity: .8, padding: '2px 4px 0' }}>
-          {kStatus}
+        <div style={{ fontSize: 11, color: c.onSurfVar, padding: '4px 4px 0', lineHeight: '17px' }}>
+          {(() => {
+            const period = s.kRange === 0 ? '全期間' : `表示期間(${s.kRange}日)`
+            if (windowK.raw == null) {
+              return `${period}は体重測定が少なく（${windowK.n}日分）、実測からkを算出できません。予測(トラジェクトリ/ホーム)には既定の 7,200 を使用します。`
+            }
+            if (windowK.ok) {
+              return `${period}の実測から算出した参考値です（k≈${windowK.raw.toLocaleString('ja-JP')}・測定 ${windowK.n}日分）。予測には k=${kVal.toLocaleString('ja-JP')} を使用します。`
+            }
+            return `${period}の実測から算出した値は k≈${windowK.raw.toLocaleString('ja-JP')}（測定 ${windowK.n}日分）ですが、妥当な範囲(4,000〜12,000kcal/kg)から外れているため、予測には既定値 7,200 を固定して使用しています。`
+          })()}
         </div>
       </div>
 
