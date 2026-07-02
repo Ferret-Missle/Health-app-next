@@ -10,7 +10,6 @@ export interface UiPrefs {
   view?:   'cumulative' | 'daily'       // balance view
   wRange?: number                       // weight-trend window: 30 | 90 | 0
   tRange?: number                       // trajectory window: 7 | 30 | 90 | 0
-  kRange?: number                       // weight×cum (k) window: 10 | 30 | 0
 }
 
 const keyFor = (uid: string) => `hp:prefs:${uid}`

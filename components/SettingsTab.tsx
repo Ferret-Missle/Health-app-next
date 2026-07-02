@@ -14,7 +14,7 @@ import { RECENT_SYNC_DAYS, FULL_SYNC_DAYS } from '@/lib/useHealthData'
 import { fx } from '@/lib/data'
 import { VERSION_LABEL } from '@/lib/version'
 
-export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSynced, sync }: TabProps) {
+export default function SettingsTab({ s, set, c, daysLeft, curW, dailyTarget, syncing, lastSynced, sync }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
 
   const lastSyncedLabel = lastSynced
@@ -62,9 +62,10 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
     setTimeout(() => setByokSaved(false), 1500)
   }
 
-  const need     = Math.max(0, curW - s.tgtW) * 7200
-  const dailyT   = daysLeft > 0 ? need / daysLeft : 0
-  const weekly   = daysLeft > 0 ? (curW - s.tgtW) / (daysLeft / 7) : 0
+  // dailyTarget comes from TabProps (lib/forecast.ts, single source of truth —
+  // previously recomputed here with a hardcoded 7200, which could disagree
+  // with the Home tab's number).
+  const weekly = daysLeft > 0 ? (curW - s.tgtW) / (daysLeft / 7) : 0
 
   const llmBtnSt = (active: boolean) => ({
     flex: 1, border: `1px solid ${active ? 'transparent' : c.outlineVar}`, borderRadius: 12,
@@ -162,7 +163,7 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
             {[
               { label: '週あたり',     value: `約${fx(Math.abs(weekly), 2)}`, unit: 'kg' },
               { label: '目標まで',     value: `約${Math.round(daysLeft / 7)}`,    unit: '週' },
-              { label: '日次目標黒字', value: `+${fmt(dailyT)}`,                  unit: 'kcal' },
+              { label: '日次目標黒字', value: `+${fmt(dailyTarget)}`,             unit: 'kcal' },
             ].map(m => (
               <div key={m.label} style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11, color: c.onSecC, opacity: .85, whiteSpace: 'nowrap' }}>{m.label}</div>
@@ -174,7 +175,7 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, syncing, lastSy
             ))}
           </div>
           <div style={{ fontSize: 10.5, color: c.onSecC, opacity: .8, lineHeight: '15px' }}>
-            係数 k=7,200 を使用した目安です。実測が貯まると個人係数 k で自動キャリブレーションされます。
+            係数 k=7,200(固定) を使用した目安です。摂取・体重の実測が増えるほど、目標摂取カロリーの精度が上がります(予実タブの「ペース診断」参照)。
           </div>
         </div>
       </div>
