@@ -5,7 +5,8 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { L, D } from '@/lib/colors'
 import type { C } from '@/lib/colors'
-import { movingAvg, daysUntil } from '@/lib/data'
+import { daysUntil } from '@/lib/data'
+import { estimateWeightTrend, estimateAdaptiveTdee, computeDailyTarget, evaluateOnTrack, TDEE_WINDOW_DAYS } from '@/lib/forecast'
 import { useHealthData, LAUNCH_SYNC_DAYS, RECENT_SYNC_DAYS, FULL_SYNC_DAYS } from '@/lib/useHealthData'
 import { useLinkStatus } from '@/lib/useLinkStatus'
 import { loadUiPrefs, saveUiPrefs } from '@/lib/uiPrefs'
@@ -44,7 +45,7 @@ function AppInner() {
     tgtW: 72.0, tgtDate: '', llm: 'groq',
     balOff: 0, grpOff: 0, calOff: 0, pfcOff: 0,
     wRange: 90, wOff: 0,
-    tRange: 0, kRange: 0,
+    tRange: 0,
   })
 
   const { data: DATA, syncing, progress, lastSynced, sync } = useHealthData()
@@ -102,15 +103,14 @@ function AppInner() {
     if (p.view   != null) patch.view   = p.view
     if (p.wRange != null) patch.wRange = p.wRange
     if (p.tRange != null) patch.tRange = p.tRange
-    if (p.kRange != null) patch.kRange = p.kRange
     if (Object.keys(patch).length) set(patch)
   }, [user])
 
   useEffect(() => {
     const uid = user?.uid
     if (!uid || !prefsLoaded.current) return
-    saveUiPrefs(uid, { range: s.range, view: s.view, wRange: s.wRange, tRange: s.tRange, kRange: s.kRange })
-  }, [user, s.range, s.view, s.wRange, s.tRange, s.kRange])
+    saveUiPrefs(uid, { range: s.range, view: s.view, wRange: s.wRange, tRange: s.tRange })
+  }, [user, s.range, s.view, s.wRange, s.tRange])
 
   // Persist goal settings to the cloud; load stored values on mount.
   useSettings(
@@ -135,59 +135,39 @@ function AppInner() {
   // Friendly "how much is syncing" label for the progress row.
   const syncScopeLabel = (d: number) => d >= FULL_SYNC_DAYS ? '全期間' : `直近${d}日分`
 
-  // Only days with a measured weight feed the weight-based stats (others are 0).
-  const weighed     = DATA.filter(x => x.w > 0)
-  const smoothW     = movingAvg(weighed.map(x => x.w), 7)
-  const curW        = smoothW.length ? Math.round(smoothW[smoothW.length - 1] * 10) / 10 : 0
-  const startW      = smoothW.length ? Math.round(smoothW[0] * 10) / 10 : 0
-  const remainKg    = Math.max(0, curW - s.tgtW)
-  const pct         = Math.min(100, Math.max(0, (startW - curW) / ((startW - s.tgtW) || 1) * 100))
+  // Weight-trend estimator (outlier-cleaned, EWMA-smoothed weight vs. calendar
+  // time only — never against self-reported cumulative balance) drives both the
+  // trajectory prediction and the adaptive-TDEE-based daily target. See
+  // lib/forecast.ts and docs/SPEC.md §5.2.4 for why k is now a fixed constant
+  // instead of a regression-calibrated value. curW/startW are derived from the
+  // same trend (not a separately-computed moving average) so that the
+  // displayed current weight, progress bar, and dailyTarget/AI-advisor
+  // calculations all agree — a single source of truth (see lib/advisor.ts,
+  // which independently derives curW the same way).
+  const trend    = estimateWeightTrend(DATA)
+  const curW     = Math.round(trend.latestSmoothed * 10) / 10
+  const startW   = trend.points.length ? Math.round(trend.points[0].smoothed * 10) / 10 : 0
+  const remainKg = Math.max(0, curW - s.tgtW)
+  const pct      = Math.min(100, Math.max(0, (startW - curW) / ((startW - s.tgtW) || 1) * 100))
 
-  const xs = weighed.map(x => x.cum)
-  const ys = weighed.map(x => x.w)
-  const n  = xs.length
-  const mx = xs.reduce((a, b) => a + b, 0) / n
-  const my = ys.reduce((a, b) => a + b, 0) / n
-  let num = 0, den = 0
-  for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2 }
-  const slope = num / (den || 1)
-
-  // Personal coefficient k (kcal per kg). Calibrate from the regression only once
-  // there's enough signal (≥3 weeks span, ≥10 weighed days) AND the result is
-  // physiologically plausible (~7,200 ± band). Otherwise fall back to the default
-  // 7,200 — sparse/early data produces wild slopes (e.g. k≈62,000). (§5.2)
-  const MIN_DAYS = 10, MIN_SPAN = 21
-  const spanDays = n >= 2 ? (weighed[n - 1].dt.getTime() - weighed[0].dt.getTime()) / 86400000 : 0
-  const rawK     = slope !== 0 && Number.isFinite(slope) ? -1 / slope : 0
-  const calibrated = n >= MIN_DAYS && spanDays >= MIN_SPAN && rawK >= 4000 && rawK <= 12000
-  const kVal = calibrated ? Math.round(rawK / 50) * 50 : 7200
-
-  // How much more weight data is needed before k can calibrate (for the UI hint).
-  const kInfo = {
-    calibrated,
-    daysShort: Math.max(0, MIN_DAYS - n),                  // more measured days needed
-    spanShort: Math.max(0, Math.ceil(MIN_SPAN - spanDays)), // more calendar days of span needed
-    outOfRange: n >= MIN_DAYS && spanDays >= MIN_SPAN && (rawK < 4000 || rawK > 12000),
-  }
-
-  // Daily target surplus and on-track status must use the calibrated kVal, not a
-  // hardcoded default — otherwise calibration silently has no effect on what's
-  // shown here (it previously used a literal 7200 while ForecastTab/advisor.ts
-  // correctly used kVal, so the KPI card and the AI advice could disagree).
-  const dailyTarget = daysLeft > 0 ? Math.max(0, (curW - s.tgtW) * kVal / daysLeft) : 0
-  const today       = DATA[DATA.length - 1]
-  const onTrack     = today.d >= dailyTarget * 0.8
+  const tdeeWindow = DATA.slice(-TDEE_WINDOW_DAYS)
+  const tdee = estimateAdaptiveTdee(tdeeWindow, estimateWeightTrend(tdeeWindow))
+  const avgBurnFallback = tdeeWindow.length ? tdeeWindow.reduce((s, x) => s + x.burn, 0) / tdeeWindow.length : 0
+  const { dailyTargetSurplus: dailyTarget, targetIntake, tdeeSource } =
+    computeDailyTarget({ curW, tgtW: s.tgtW, daysLeft, tdee, avgBurnFallback })
+  const today   = DATA[DATA.length - 1]
+  const { onTrack } = evaluateOnTrack({ curW, tgtW: s.tgtW, daysLeft, trend })
 
   // FR-4.4: on launch, run this week's auto-advice once (catch-up if Sunday was
   // missed). Wait until goal settings are loaded so we pass the real target.
   const { advice: weeklyAdvice } = useWeeklyAdvice({
-    tgtW: s.tgtW, days: daysLeft, k: kVal, provider: s.llm, ready: settingsLoaded,
+    tgtW: s.tgtW, days: daysLeft, provider: s.llm, ready: settingsLoaded,
   })
 
   const tabTitle = { home: 'ホーム', balance: '収支', forecast: '予実', settings: '設定' }[s.tab]
   const backdrop = s.dark ? '#05140f' : '#c4cfc8'
 
-  const props: TabProps = { s, set, c, data: DATA, daysLeft, dailyTarget, curW, startW, remainKg, pct, onTrack, today, kVal, kInfo, syncing, lastSynced, sync, weeklyAdvice, userEmail: user?.email ?? null }
+  const props: TabProps = { s, set, c, data: DATA, daysLeft, dailyTarget, targetIntake, tdeeSource, curW, startW, remainKg, pct, onTrack, today, syncing, lastSynced, sync, weeklyAdvice, userEmail: user?.email ?? null }
 
   const syncLabel = (() => {
     if (!lastSynced) return '未同期'

@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { sql } from '@/lib/db'
 import { userGuard } from '@/lib/firebase-admin'
-import { generateAdvice, logAdvice, DEFAULT_K } from '@/lib/advice-core'
+import { generateAdvice, logAdvice } from '@/lib/advice-core'
 import type { LlmConfig } from '@/lib/groq'
 
 export const dynamic = 'force-dynamic'
@@ -22,14 +22,14 @@ function currentWeekStartJst(now = new Date()): string {
 }
 
 // POST: run the weekly advice if this week's hasn't run yet.
-// Body (optional): { tgtW, days, k, provider, apiKey, baseUrl, model }
+// Body (optional): { tgtW, days, provider, apiKey, baseUrl, model }
 export async function POST(req: NextRequest) {
   const auth = await userGuard(req)
   if (auth instanceof NextResponse) return auth
   const { uid } = auth
 
   const body = await req.json().catch(() => ({})) as {
-    tgtW?: number; days?: number; k?: number
+    tgtW?: number; days?: number
   } & LlmConfig
 
   const weekStart = currentWeekStartJst()
@@ -51,7 +51,6 @@ export async function POST(req: NextRequest) {
     userId: uid,
     tgtW: body.tgtW ?? 72,
     days: body.days ?? 90,
-    k:    body.k ?? DEFAULT_K,
     cfg:  { provider: body.provider, apiKey: body.apiKey, baseUrl: body.baseUrl, model: body.model },
   })
 

@@ -1,7 +1,8 @@
 'use client'
 
 import type { TabProps } from '@/lib/types'
-import { movingAvg, fx, type DayData } from '@/lib/data'
+import { fx, type DayData } from '@/lib/data'
+import { estimateWeightTrend, estimateAdaptiveTdee, buildTrajectory, TDEE_WINDOW_DAYS } from '@/lib/forecast'
 import type { C } from '@/lib/colors'
 import InfoTip from './InfoTip'
 
@@ -64,29 +65,31 @@ function WeightTrendChart({ d, tgtW, c }: { d: DayData[], tgtW: number, c: C }) 
   )
 }
 
-function TrajectoryChart({ d, tgtW, days, k, c }: { d: DayData[], tgtW: number, days: number, k: number, c: C }) {
+// Predicted line is now a pure weight-vs-time trend extrapolation (outlier-
+// cleaned, EWMA-smoothed, Theil-Sen slope) — it no longer depends on
+// self-reported calorie balance. See lib/forecast.ts and docs/SPEC.md §5.2.4.
+function TrajectoryChart({ d, tgtW, days, c }: { d: DayData[], tgtW: number, days: number, c: C }) {
   const W = 352, H = 214, pl = 30, pr = 12, pt = 12, pb = 36
   const iw = W - pl - pr, ih = H - pt - pb
 
-  // Plot only days with a measured weight, keeping each point at its real day index.
-  const weighedIdx = d.map((x, i) => ({ i, w: x.w })).filter(p => p.w > 0)
-  const smoothed   = movingAvg(weighedIdx.map(p => p.w), 7)
-  const measured   = weighedIdx.map((p, j) => ({ i: p.i, v: smoothed[j] }))
-  const anchorI    = measured.length ? measured[0].i : 0  // first weighed day
-  const W0         = measured.length ? measured[0].v : 0
-  const cum0       = d[anchorI]?.cum ?? 0                  // cumulative balance at the anchor
-  const horizon    = d.length + days
-  const avgD       = d.reduce((s, x) => s + x.d, 0) / d.length
+  const trend = estimateWeightTrend(d)
+  const traj  = buildTrajectory(d, trend, days)
 
-  // Predicted weight = W0 − (balance accrued *since the anchor*) ÷ k, so the
-  // prediction starts from the same point/time as the measured line (not window start).
-  const pred: number[] = []
-  for (let i = 0; i < horizon; i++) {
-    const cum = i < d.length ? d[i].cum : d[d.length - 1].cum + avgD * (i - d.length + 1)
-    pred.push(W0 - (cum - cum0) / k)
+  if (trend.n === 0 || traj.length === 0) {
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+        <text x={W / 2} y={H / 2} textAnchor="middle" fill={c.onSurfVar} fontSize={11}
+          fontFamily="Roboto, sans-serif">この期間の体重データがありません</text>
+      </svg>
+    )
   }
 
-  const allVals = [...measured.map(m => m.v), ...pred, W0, tgtW]
+  const measured = trend.points.map(p => ({ i: p.i, v: p.smoothed }))
+  const anchorI  = measured.length ? measured[0].i : 0
+  const horizon  = traj.length
+  const predVals = traj.map(p => p.value)
+
+  const allVals = [...measured.map(m => m.v), ...predVals, tgtW]
   const ymin = Math.min(...allVals) - 0.5, ymax = Math.max(...allVals) + 0.5
   const axisY = pt + ih
 
@@ -94,7 +97,6 @@ function TrajectoryChart({ d, tgtW, days, k, c }: { d: DayData[], tgtW: number, 
   const Y = (v: number) => pt + ih - (v - ymin) / ((ymax - ymin) || 1) * ih
 
   const fmtD = (dt: Date) => `${dt.getMonth() + 1}/${dt.getDate()}`
-  const dateAt = (i: number) => { const dt = new Date(d[0].dt); dt.setDate(dt.getDate() + i); return dt }
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
@@ -108,9 +110,9 @@ function TrajectoryChart({ d, tgtW, days, k, c }: { d: DayData[], tgtW: number, 
           </g>
         )
       })}
-      <line x1={X(0)} y1={Y(W0)} x2={X(horizon - 1)} y2={Y(tgtW)}
+      <line x1={X(0)} y1={Y(predVals[0])} x2={X(horizon - 1)} y2={Y(tgtW)}
         stroke={c.onSurfVar} strokeWidth={1.6} strokeDasharray="5 4" />
-      <polyline points={pred.map((v, i) => ({ v, i })).filter(p => p.i >= anchorI).map(p => `${X(p.i)},${Y(p.v)}`).join(' ')}
+      <polyline points={traj.filter(p => p.i >= anchorI).map(p => `${X(p.i)},${Y(p.value)}`).join(' ')}
         fill="none" stroke={c.tertiary} strokeWidth={2} strokeDasharray="5 3" />
       <polyline points={measured.map(m => `${X(m.i)},${Y(m.v)}`).join(' ')}
         fill="none" stroke={c.primary} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
@@ -122,7 +124,7 @@ function TrajectoryChart({ d, tgtW, days, k, c }: { d: DayData[], tgtW: number, 
         <text x={X(measured[measured.length - 1].i) + 6} y={Y(measured[measured.length - 1].v) + 3}
           fill={c.primary} fontSize={9} fontWeight={600} fontFamily="Roboto">実測</text>
       )}
-      <text x={X(horizon - 1)} y={Y(pred[horizon - 1]) + 11} textAnchor="end"
+      <text x={X(horizon - 1)} y={Y(predVals[horizon - 1]) + 11} textAnchor="end"
         fill={c.tertiary} fontSize={9} fontWeight={600} fontFamily="Roboto">予測</text>
       <line x1={X(d.length - 1)} y1={pt} x2={X(d.length - 1)} y2={axisY}
         stroke={c.primary} strokeWidth={1} strokeDasharray="2 3" opacity={0.45} />
@@ -130,7 +132,7 @@ function TrajectoryChart({ d, tgtW, days, k, c }: { d: DayData[], tgtW: number, 
       {[
         { i: 0,            label: fmtD(d[0].dt),                    a: 'start'  },
         { i: d.length - 1, label: '今日 ' + fmtD(d[d.length - 1].dt), a: 'middle' },
-        { i: horizon - 1,  label: '目標 ' + fmtD(dateAt(horizon - 1)), a: 'end'    },
+        { i: horizon - 1,  label: '目標 ' + fmtD(traj[horizon - 1].dt), a: 'end'    },
       ].map((t, ti) => {
         const x = X(t.i)
         return (
@@ -144,55 +146,6 @@ function TrajectoryChart({ d, tgtW, days, k, c }: { d: DayData[], tgtW: number, 
       })}
       <text x={X(horizon - 1)} y={Y(tgtW) - 6} textAnchor="end"
         fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">目標 {fx(tgtW)}</text>
-    </svg>
-  )
-}
-
-function ScatterChart({ d, c }: { d: DayData[], kVal: number, c: C }) {
-  const W = 352, H = 190, pl = 32, pr = 10, pt = 12, pb = 26
-  const iw = W - pl - pr, ih = H - pt - pb
-
-  const dw   = d.filter(x => x.w > 0)   // only days with a measured weight
-  if (dw.length < 2) {
-    return (
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
-        <text x={W / 2} y={H / 2} textAnchor="middle" fill={c.onSurfVar} fontSize={11}
-          fontFamily="Roboto, sans-serif">この期間の体重データが不足しています</text>
-      </svg>
-    )
-  }
-  const xs   = dw.map(x => x.cum), ys = dw.map(x => x.w)
-  const xmin = Math.min(...xs), xmax = Math.max(...xs)
-  const ymin = Math.min(...ys) - 0.3, ymax = Math.max(...ys) + 0.3
-
-  const X = (v: number) => pl + (v - xmin) / ((xmax - xmin) || 1) * iw
-  const Y = (v: number) => pt + ih - (v - ymin) / ((ymax - ymin) || 1) * ih
-
-  const n  = xs.length
-  const mx = xs.reduce((a, b) => a + b, 0) / n
-  const my = ys.reduce((a, b) => a + b, 0) / n
-  let num = 0, den = 0
-  for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2 }
-  const slope = num / (den || 1), intercept = my - slope * mx
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
-      {[ymax, (ymax + ymin) / 2, ymin].map((v, k) => {
-        const y = Y(v)
-        return (
-          <g key={k}>
-            <line x1={pl} x2={W - pr} y1={y} y2={y} stroke={c.grid} strokeWidth={1} />
-            <text x={pl - 5} y={y + 3} textAnchor="end" fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">{fx(v)}</text>
-          </g>
-        )
-      })}
-      <line
-        x1={X(xmin)} y1={Y(slope * xmin + intercept)}
-        x2={X(xmax)} y2={Y(slope * xmax + intercept)}
-        stroke={c.primary} strokeWidth={2.4} />
-      {dw.map((x, i) => <circle key={i} cx={X(x.cum)} cy={Y(x.w)} r={3} fill={c.tertiary} opacity={0.75} />)}
-      <text x={W - pr} y={H - 6} textAnchor="end" fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">累積黒字 →</text>
-      <text x={pl - 5} y={pt - 2} textAnchor="start" fill={c.onSurfVar} fontSize={9} fontFamily="Roboto">体重 kg</text>
     </svg>
   )
 }
@@ -233,7 +186,7 @@ function BodyCompChart({ d, dark, c }: { d: DayData[], dark: boolean, c: C }) {
   )
 }
 
-export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal }: TabProps) {
+export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabProps) {
   // Weight-trend window (independent period switcher: 30 / 90 / all + offset).
   const wWindow = (() => {
     if (s.wRange === 0) return data.slice()
@@ -267,7 +220,7 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal }
     </button>
   )
 
-  // Generic period chip (used by the trajectory and weight×cum switchers).
+  // Generic period chip (used by the trajectory switcher).
   const rangeBtn = (active: boolean, lbl: string, onClick: () => void) => (
     <button type="button" onClick={onClick} style={{
       border: `1px solid ${active ? 'transparent' : c.outlineVar}`, borderRadius: 999,
@@ -280,25 +233,28 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal }
   // inside the chart, so this only narrows the measured/observed portion.
   const tWindow = s.tRange === 0 ? data : data.slice(Math.max(0, data.length - s.tRange))
 
-  // weight×cum (k) window: most recent N days (0 = all). Display-only — the k that
-  // drives predictions (kVal prop) stays the all-data calibration.
-  const kWindow = s.kRange === 0 ? data : data.slice(Math.max(0, data.length - s.kRange))
-  // Actual regression-derived k for the window (raw value, not clamped). `ok`
-  // flags whether it sits in the plausible band; when it doesn't, predictions
-  // fall back to the fixed default (7,200).
-  const windowK = (() => {
-    const dw = kWindow.filter(x => x.w > 0)
-    const nn = dw.length
-    if (nn < 3) return { raw: null as number | null, ok: false, n: nn }
-    const xs = dw.map(x => x.cum), ys = dw.map(x => x.w)
-    const mxx = xs.reduce((a, b) => a + b, 0) / nn, myy = ys.reduce((a, b) => a + b, 0) / nn
-    let num = 0, den = 0
-    for (let i = 0; i < nn; i++) { num += (xs[i] - mxx) * (ys[i] - myy); den += (xs[i] - mxx) ** 2 }
-    const slope = num / (den || 1)
-    const rawRaw = slope !== 0 && Number.isFinite(slope) ? -1 / slope : NaN
-    if (!Number.isFinite(rawRaw)) return { raw: null as number | null, ok: false, n: nn }
-    const raw = Math.round(rawRaw / 50) * 50
-    return { raw, ok: raw >= 4000 && raw <= 12000, n: nn }
+  // Pace diagnostic: fixed TDEE_WINDOW_DAYS window (independent of tRange),
+  // comparing logged intake / adaptive TDEE / Google Health's estimated burn —
+  // a large gap between adaptive TDEE and the device estimate is consistent
+  // with under-logged intake. Replaces the retired "体重×累積黒字" k-scatter
+  // card, whose whole premise (regressing weight vs. self-reported cumulative
+  // balance) is exactly the mechanism found to be unreliable.
+  const paceWindow = data.slice(-TDEE_WINDOW_DAYS)
+  const paceTrend  = estimateWeightTrend(paceWindow)
+  const paceTdee   = estimateAdaptiveTdee(paceWindow, paceTrend)
+  const avgBurnWindow = paceWindow.length
+    ? paceWindow.reduce((sum, x) => sum + x.burn, 0) / paceWindow.length
+    : 0
+
+  const diagnosisText = (() => {
+    if (!paceTdee.usable) return 'データ不足のため診断できません（体重測定または食事記録が少ない可能性があります）。'
+    if (avgBurnWindow <= 0) return 'Google Health未連携のため、実測消費との比較はできません。'
+    const gapPct = (paceTdee.avgTdee - avgBurnWindow) / avgBurnWindow * 100
+    // avgTdee = avgBurnFallback − (実際の摂取−申告摂取)。よって申告が実際より少ない
+    // （過小申告・記録漏れ）ほどavgTdeeは下振れする。gapPctが負＝過小申告シグナル。
+    if (gapPct < -15) return `アダプティブTDEE（${Math.round(paceTdee.avgTdee)}kcal）がGoogle Health推定（${Math.round(avgBurnWindow)}kcal）を大きく下回っています。摂取の記録漏れ（過小申告）の可能性があります。`
+    if (gapPct > 15) return `アダプティブTDEE（${Math.round(paceTdee.avgTdee)}kcal）がGoogle Health推定（${Math.round(avgBurnWindow)}kcal）を上回っています。記録との整合を確認してみてください。`
+    return '申告摂取量と実測消費はおおむね整合的です。'
   })()
 
   const statusBg   = onTrack ? c.onTrackC : c.offTrackC
@@ -346,7 +302,7 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal }
             <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
               体重トラジェクトリ
               <InfoTip c={c} text={
-                '実測(平滑)＝実際の体重。予測＝今までのカロリー収支ペースが続いた場合に到達するはずの体重(係数kで換算)。目標＝目標体重までの直線。\n\n「オフトラック」= 予測より実測が重い(＝収支のわりに体重が減っていない)状態。「オントラック」= 予測どおり、または予測より軽く順調な状態。'
+                '実測(平滑)＝実際の体重(外れ値除去・平滑化)。予測＝体重の実測トレンドをそのまま延長した場合に到達する体重。目標＝目標体重までの直線。\n\n「オフトラック」= 目標達成に必要なペースより実際の減量ペースが遅い状態。「オントラック」= 必要なペース以上で進んでいる状態。'
               } />
             </div>
             <div style={{ fontSize: 11, color: c.onSurfVar, marginTop: 2 }}>予測 vs 実測 vs 目標</div>
@@ -369,7 +325,7 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal }
           {rangeBtn(s.tRange === 0,  '全期間', () => set({ tRange: 0 }))}
         </div>
         <div style={{ margin: '8px 0 2px' }}>
-          <TrajectoryChart d={tWindow} tgtW={s.tgtW} days={daysLeft} k={kVal} c={c} />
+          <TrajectoryChart d={tWindow} tgtW={s.tgtW} days={daysLeft} c={c} />
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 4px 0', fontSize: 11, color: c.onSurfVar }}>
           {[
@@ -385,49 +341,34 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack, kVal }
       </div>
 
       <div style={{ background: c.surfLow, borderRadius: 24, padding: '18px 16px 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, padding: '0 4px' }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-              体重 × 累積黒字
-              <InfoTip c={c} text={
-                '個人係数k＝体重1kgを動かすのに必要なカロリー(目安7,200)。各点は「累積黒字 vs 体重」で、回帰直線の傾き = 1/k。\n\nkを実測でキャリブするには体重測定が「10日分以上・期間3週間以上」必要(連続でなくてOK)。それまでは既定の7,200を使用します。'
-              } />
+        <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', marginBottom: 2 }}>
+          ペース診断
+          <InfoTip c={c} text={
+            `直近${TDEE_WINDOW_DAYS}日の「申告摂取量」「アダプティブTDEE(実際の体重変化から逆算した消費カロリー)」「Google Health推定消費」を比較。\n\nアダプティブTDEEがGoogle Health推定を大きく下回っている場合、摂取の記録漏れ(過小申告)の可能性があります。`
+          } />
+        </div>
+        <div style={{ fontSize: 11, color: c.onSurfVar, padding: '0 4px', marginBottom: 14 }}>直近{TDEE_WINDOW_DAYS}日</div>
+        {paceTdee.usable ? (
+          <>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {[
+                { label: '申告摂取(平均)', value: paceTdee.avgLoggedIntake, col: c.primary },
+                { label: 'アダプティブTDEE', value: paceTdee.avgTdee, col: c.tertiary },
+                { label: 'Google Health推定', value: avgBurnWindow, col: c.onSurfVar },
+              ].map(m => (
+                <div key={m.label} style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: c.onSurfVar, whiteSpace: 'nowrap' }}>{m.label}</div>
+                  <div style={{ fontSize: 17, fontWeight: 600, fontFeatureSettings: '"tnum"', color: m.col }}>
+                    {Math.round(m.value).toLocaleString('ja-JP')}
+                  </div>
+                </div>
+              ))}
             </div>
-            <div style={{ fontSize: 11, color: c.onSurfVar, marginTop: 2 }}>回帰の傾き = 1/k</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, color: c.onSurfVar, display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-              {s.kRange === 0 ? '全期間の k' : `表示期間(${s.kRange}日)の k`}
-              <span style={{
-                fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 999,
-                background: c.surfHighest, color: c.onSurfVar,
-              }}>参考</span>
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"', color: windowK.ok || windowK.raw == null ? c.primary : c.debit }}>
-              {windowK.raw == null ? '—' : `≈ ${windowK.raw.toLocaleString('ja-JP')}`}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', padding: '0 4px' }}>
-          {rangeBtn(s.kRange === 10, '10日',  () => set({ kRange: 10 }))}
-          {rangeBtn(s.kRange === 30, '30日',  () => set({ kRange: 30 }))}
-          {rangeBtn(s.kRange === 0,  '全期間', () => set({ kRange: 0 }))}
-        </div>
-        <div style={{ margin: '8px 0 2px' }}>
-          <ScatterChart d={kWindow} kVal={kVal} c={c} />
-        </div>
-        <div style={{ fontSize: 11, color: c.onSurfVar, padding: '4px 4px 0', lineHeight: '17px' }}>
-          {(() => {
-            const period = s.kRange === 0 ? '全期間' : `表示期間(${s.kRange}日)`
-            if (windowK.raw == null) {
-              return `${period}は体重測定が少なく（${windowK.n}日分）、実測からkを算出できません。予測(トラジェクトリ/ホーム)には既定の 7,200 を使用します。`
-            }
-            if (windowK.ok) {
-              return `${period}の実測から算出した参考値です（k≈${windowK.raw.toLocaleString('ja-JP')}・測定 ${windowK.n}日分）。予測には k=${kVal.toLocaleString('ja-JP')} を使用します。`
-            }
-            return `${period}の実測から算出した値は k≈${windowK.raw.toLocaleString('ja-JP')}（測定 ${windowK.n}日分）ですが、妥当な範囲(4,000〜12,000kcal/kg)から外れているため、予測には既定値 7,200 を固定して使用しています。`
-          })()}
-        </div>
+            <div style={{ fontSize: 11, color: c.onSurfVar, padding: '12px 4px 0', lineHeight: '17px' }}>{diagnosisText}</div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12, color: c.onSurfVar, padding: '4px 4px 0' }}>{diagnosisText}</div>
+        )}
       </div>
 
       <div style={{ fontSize: 11, fontWeight: 600, color: c.onSurfVar, letterSpacing: '.6px', margin: '6px 4px 0' }}>セカンダリ指標</div>

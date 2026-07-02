@@ -7,7 +7,7 @@ import { getByokKey } from '@/lib/byok'
 import { fx } from '@/lib/data'
 import InfoTip from './InfoTip'
 
-export default function HomeTab({ s, set, c, data, daysLeft, dailyTarget, curW, remainKg, pct, onTrack, today, kVal, weeklyAdvice, userEmail }: TabProps) {
+export default function HomeTab({ s, set, c, data, daysLeft, dailyTarget, curW, remainKg, pct, onTrack, today, weeklyAdvice, userEmail }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
   const link = useLinkStatus()
   // List providers that still need linking (only shown when something is missing).
@@ -31,7 +31,7 @@ export default function HomeTab({ s, set, c, data, daysLeft, dailyTarget, curW, 
   const askAdvice = () => {
     if (byokMissing) return
     const apiKey = s.llm === 'byok' ? getByokKey() : undefined
-    ask({ tgtW: s.tgtW, days: daysLeft, k: kVal, provider: s.llm, apiKey })
+    ask({ tgtW: s.tgtW, days: daysLeft, provider: s.llm, apiKey })
   }
 
   const last7  = data.slice(-7)
@@ -128,7 +128,7 @@ export default function HomeTab({ s, set, c, data, daysLeft, dailyTarget, curW, 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <span style={{ fontSize: 13, fontWeight: 500, color: c.onSurfVar, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             目標達成まで
-            <InfoTip c={c} text={'目標体重まで残り何kg・残り何日かを表示。「オントラック」は今の収支ペースで目標に間に合う見込み、「要調整」はペース不足。'} />
+            <InfoTip c={c} text={'目標体重まで残り何kg・残り何日かを表示。「オントラック」は体重の実測ペースで目標に間に合う見込み、「要調整」はペース不足。'} />
           </span>
           <span style={{
             display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 600,

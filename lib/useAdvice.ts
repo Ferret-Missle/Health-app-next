@@ -14,7 +14,6 @@ export type AdviceStatus = 'idle' | 'loading' | 'done' | 'error' | 'exhausted'
 interface AdviceArgs {
   tgtW:     number
   days:     number
-  k:        number
   provider: 'groq' | 'byok'
   apiKey?:  string
 }

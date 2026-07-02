@@ -16,7 +16,6 @@ export interface WeeklyAdvice {
 interface Args {
   tgtW:     number
   days:     number
-  k:        number
   provider: 'groq' | 'byok'
   ready:    boolean   // wait until goal/settings are loaded before firing
 }
@@ -36,7 +35,7 @@ export function useWeeklyAdvice(args: Args): WeeklyAdvice {
     authFetch('/api/advice/weekly', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ tgtW: args.tgtW, days: args.days, k: args.k, provider: args.provider, apiKey }),
+      body:    JSON.stringify({ tgtW: args.tgtW, days: args.days, provider: args.provider, apiKey }),
     })
       .then(r => r.json())
       .then((d: { ran?: boolean; advice?: string; weekStart?: string; reason?: string }) => {
@@ -48,7 +47,7 @@ export function useWeeklyAdvice(args: Args): WeeklyAdvice {
         })
       })
       .catch(() => {})
-  }, [args.ready, args.provider, args.tgtW, args.days, args.k])
+  }, [args.ready, args.provider, args.tgtW, args.days])
 
   return state
 }

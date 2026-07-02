@@ -3,17 +3,15 @@ import { rowsToDayData, type DailyRow } from './data'
 import { buildAdvicePrompt } from './advisor'
 import { chat, type LlmConfig } from './groq'
 import { estimateQuota, recordUsage, cacheRpd, getCachedRpd, type QuotaEstimate } from './quota'
+import { TDEE_WINDOW_DAYS } from './forecast'
 
 // Shared advice-generation core, used by both the manual route and the weekly
 // auto-run (FR-4.4). Keeps quota tracking / usage recording in one place.
-
-export const DEFAULT_K = 7200
 
 export interface GenerateArgs {
   userId: string
   tgtW: number
   days: number
-  k:    number
   cfg:  LlmConfig
 }
 
@@ -26,7 +24,7 @@ function todayJst(): string {
   return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
-async function recentData(userId: string, days = 14) {
+async function recentData(userId: string, days = TDEE_WINDOW_DAYS) {
   // Exclude today (JST): the current day's food log is usually incomplete, so it
   // shows up as an outlier (near-zero intake). Advice should look at completed
   // days only. We fetch one extra day and drop today to keep `days` full.
@@ -46,9 +44,10 @@ async function recentData(userId: string, days = 14) {
 }
 
 /**
- * Generate advice from the last 14 days and record token usage. Performs a
- * pre-flight quota check for the default (Groq) provider; BYOK skips it (the
- * user's own budget). Does NOT persist to advice_log — the caller decides that.
+ * Generate advice from the last TDEE_WINDOW_DAYS days and record token usage.
+ * Performs a pre-flight quota check for the default (Groq) provider; BYOK
+ * skips it (the user's own budget). Does NOT persist to advice_log — the
+ * caller decides that.
  */
 export async function generateAdvice(args: GenerateArgs): Promise<GenerateResult> {
   const provider = args.cfg.provider ?? 'groq'
@@ -59,10 +58,10 @@ export async function generateAdvice(args: GenerateArgs): Promise<GenerateResult
     if (pre.exhausted) return { ok: false, reason: 'quota_exhausted', quota: pre }
   }
 
-  const data = await recentData(userId, 14)
+  const data = await recentData(userId)
   if (data.length === 0) return { ok: false, reason: 'no_data' }
 
-  const messages = buildAdvicePrompt({ data, tgtW: args.tgtW, days: args.days, k: args.k })
+  const messages = buildAdvicePrompt({ data, tgtW: args.tgtW, days: args.days })
 
   try {
     const result = await chat(messages, args.cfg)
