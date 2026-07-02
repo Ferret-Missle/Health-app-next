@@ -142,9 +142,6 @@ function AppInner() {
   const startW      = smoothW.length ? Math.round(smoothW[0] * 10) / 10 : 0
   const remainKg    = Math.max(0, curW - s.tgtW)
   const pct         = Math.min(100, Math.max(0, (startW - curW) / ((startW - s.tgtW) || 1) * 100))
-  const dailyTarget = daysLeft > 0 ? Math.max(0, (curW - s.tgtW) * 7200 / daysLeft) : 0
-  const today       = DATA[DATA.length - 1]
-  const onTrack     = today.d >= dailyTarget * 0.8
 
   const xs = weighed.map(x => x.cum)
   const ys = weighed.map(x => x.w)
@@ -172,6 +169,14 @@ function AppInner() {
     spanShort: Math.max(0, Math.ceil(MIN_SPAN - spanDays)), // more calendar days of span needed
     outOfRange: n >= MIN_DAYS && spanDays >= MIN_SPAN && (rawK < 4000 || rawK > 12000),
   }
+
+  // Daily target surplus and on-track status must use the calibrated kVal, not a
+  // hardcoded default — otherwise calibration silently has no effect on what's
+  // shown here (it previously used a literal 7200 while ForecastTab/advisor.ts
+  // correctly used kVal, so the KPI card and the AI advice could disagree).
+  const dailyTarget = daysLeft > 0 ? Math.max(0, (curW - s.tgtW) * kVal / daysLeft) : 0
+  const today       = DATA[DATA.length - 1]
+  const onTrack     = today.d >= dailyTarget * 0.8
 
   // FR-4.4: on launch, run this week's auto-advice once (catch-up if Sunday was
   // missed). Wait until goal settings are loaded so we pass the real target.
