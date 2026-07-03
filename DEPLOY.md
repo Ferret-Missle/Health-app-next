@@ -46,7 +46,7 @@ Vercel の **New Project → Import** でこのリポジトリを選ぶ。Root D
 | `ALLOWED_UID` | （旧）単一オーナーUID | 後方互換で引き続き許可リストに加算される。新規は `ALLOWED_EMAILS` を推奨 |
 | `LEGACY_OWNER_UID` | 既存データの所有UID（移行時のみ） | 単一ユーザDBを移行する際、既存行の `user_id` をこの値で埋める（未設定時は `ALLOWED_UID` を使用） |
 | `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase client | |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase client | |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase client | **`<your-app>.vercel.app`(アプリ本体と同一ドメイン)を推奨**。デフォルトの `<project-id>.firebaseapp.com` のままだと一部ユーザーでサインインが無言で失敗する（下記参照） |
 | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase client | |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase client | |
 
@@ -72,6 +72,25 @@ Vercel の **New Project → Import** でこのリポジトリを選ぶ。Root D
 
 ### Firebase
 - Authentication → Settings → 承認済みドメインに **`<your-app>.vercel.app`** を追加
+- **`NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` はデフォルト値ではなく `<your-app>.vercel.app` を設定する**
+  （下記「authDomain を自ドメインにする理由」を参照）
+
+#### authDomain を自ドメインにする理由（一部ユーザーでサインインが無言失敗する不具合の対策）
+
+`authDomain` をデフォルトの `<project-id>.firebaseapp.com` のままにすると、サインイン
+（ポップアップ・リダイレクトいずれも）はアプリ本体のドメインとは別オリジンとの間で
+認証状態をやり取りすることになり、**サードパーティストレージアクセス**に依存する。
+Safari（デフォルトでITP有効）・Firefoxの厳格なトラッキング防止・プライベートブラウジング
+などではこれがブロックされ、`getRedirectResult()` やポップアップの完了が**エラーも出ずに
+静かに失敗**し、ユーザーはサインイン画面に戻り続ける（開発者の環境では再現しないことが多い）。
+
+`next.config.ts` の `rewrites()` で `/__/auth/:path*` を
+`https://<project-id>.firebaseapp.com/__/auth/:path*` にプロキシしているため、
+`NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` をアプリ自身のドメイン（`<your-app>.vercel.app` や
+カスタムドメイン）に設定すれば、認証ハンドラも同一オリジンとして扱われ、上記の
+サードパーティストレージ問題が構造的に解消する。設定変更後は上記の「承認済みドメイン」
+にそのドメインが含まれていることを確認すること（`NEXT_PUBLIC_FIREBASE_PROJECT_ID` は
+プロキシ先の算出に使うため、正しい値を設定しておく）。
 
 ---
 
