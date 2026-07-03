@@ -16,7 +16,7 @@ export interface State {
   grpOff:   number
   calOff:   number
   pfcOff:   number
-  wRange:   number       // weight chart window: 30 | 90 | 0 (all)
+  wRange:   number       // weight chart window: 7 | 30 | 90 | 0 (all)
   wOff:     number       // weight chart period offset (0 = latest)
   tRange:   number       // trajectory window: 7 | 30 | 90 | 0 (all)
 }

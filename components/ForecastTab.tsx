@@ -8,8 +8,10 @@ import InfoTip from './InfoTip'
 
 // Simple weight time-series for the selected window. Plots measured weight
 // (days with w>0) as a line; the goal weight is drawn as a dashed reference.
-function WeightTrendChart({ d, tgtW, c }: { d: DayData[], tgtW: number, c: C }) {
-  const W = 352, H = 180, pl = 34, pr = 10, pt = 14, pb = 26
+// showLabels (7-day / 30-day windows only — too dense to read at 90-day/all)
+// prints each point's exact value, staggered above/below to avoid collisions.
+function WeightTrendChart({ d, tgtW, c, showLabels }: { d: DayData[], tgtW: number, c: C, showLabels: boolean }) {
+  const W = 352, H = 180, pl = 34, pr = 10, pt = showLabels ? 22 : 14, pb = 26
   const iw = W - pl - pr, ih = H - pt - pb
   const axisY = pt + ih
 
@@ -30,6 +32,7 @@ function WeightTrendChart({ d, tgtW, c }: { d: DayData[], tgtW: number, c: C }) 
   const n    = d.length
   const X = (i: number) => pl + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw)
   const Y = (v: number) => pt + ih - (v - ymin) / ((ymax - ymin) || 1) * ih
+  const labelSize = pts.length <= 10 ? 9 : 7.5
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
@@ -53,6 +56,14 @@ function WeightTrendChart({ d, tgtW, c }: { d: DayData[], tgtW: number, c: C }) 
       <polyline points={pts.map(p => `${X(p.i)},${Y(p.w)}`).join(' ')}
         fill="none" stroke={c.primary} strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />
       {pts.map(p => <circle key={p.i} cx={X(p.i)} cy={Y(p.w)} r={2.8} fill={c.primary} />)}
+      {showLabels && pts.map((p, pi) => {
+        const above = pi % 2 === 0
+        return (
+          <text key={`lbl-${p.i}`} x={X(p.i)} y={Y(p.w) + (above ? -7 : 13)} textAnchor="middle"
+            fill={c.onSurf} fontSize={labelSize} fontFamily="Roboto, sans-serif"
+            style={{ fontFeatureSettings: '"tnum"' }}>{fx(p.w)}</text>
+        )
+      })}
 
       <line x1={pl} x2={W - pr} y1={axisY} y2={axisY} stroke={c.outlineVar} strokeWidth={1} />
       {/* first / last date ticks */}
@@ -269,10 +280,11 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabP
           <span style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
             体重の推移
             <InfoTip c={c} text={
-              '測定した体重の時系列。点線は目標体重。期間(30日/90日/全期間)を切り替えられ、矢印で前後に移動できます。日付ラベルをタップすると最新に戻ります。'
+              '測定した体重の時系列。点線は目標体重。期間(7日/30日/90日/全期間)を切り替えられ、矢印で前後に移動できます。日付ラベルをタップすると最新に戻ります。7日・30日表示では各点の体重値を表示します。'
             } />
           </span>
           <div style={{ display: 'flex', gap: 6 }}>
+            {wRangeBtn(7, '7日')}
             {wRangeBtn(30, '30日')}
             {wRangeBtn(90, '90日')}
             {wRangeBtn(0, '全期間')}
@@ -293,7 +305,7 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabP
           </button>
           {wArrow(wNextDis, () => set({ wOff: s.wOff - 1 }), 'next')}
         </div>
-        <WeightTrendChart d={wWindow} tgtW={s.tgtW} c={c} />
+        <WeightTrendChart d={wWindow} tgtW={s.tgtW} c={c} showLabels={s.wRange === 7 || s.wRange === 30} />
       </div>
 
       <div style={{ background: c.surfLow, borderRadius: 24, padding: '18px 16px 14px' }}>
