@@ -8,7 +8,7 @@
 export interface UiPrefs {
   range?:  number                       // balance window: 7 | 30 | 0
   view?:   'cumulative' | 'daily'       // balance view
-  wRange?: number                       // weight-trend window: 30 | 90 | 0
+  wRange?: number                       // weight-trend window: 7 | 30 | 90 | 0
   tRange?: number                       // trajectory window: 7 | 30 | 90 | 0
 }
 
