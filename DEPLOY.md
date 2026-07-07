@@ -46,7 +46,7 @@ Vercel の **New Project → Import** でこのリポジトリを選ぶ。Root D
 | `ALLOWED_UID` | （旧）単一オーナーUID | 後方互換で引き続き許可リストに加算される。新規は `ALLOWED_EMAILS` を推奨 |
 | `LEGACY_OWNER_UID` | 既存データの所有UID（移行時のみ） | 単一ユーザDBを移行する際、既存行の `user_id` をこの値で埋める（未設定時は `ALLOWED_UID` を使用） |
 | `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase client | |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase client | **`<your-app>.vercel.app`(アプリ本体と同一ドメイン)を推奨**。デフォルトの `<project-id>.firebaseapp.com` のままだと一部ユーザーでサインインが無言で失敗する（下記参照） |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase client | **`<your-app>.vercel.app`(アプリ本体と同一ドメイン、`https://`は付けない素のホスト名)を推奨**。デフォルトの `<project-id>.firebaseapp.com` のままだと一部ユーザーでサインインが無言で失敗する（下記参照）。`https://`を付けて設定すると内部でURLが二重になり `unauthorized-domain` / `redirect_uri_mismatch` エラーになるので要注意 |
 | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firebase client | |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase client | |
 
@@ -88,9 +88,18 @@ Safari（デフォルトでITP有効）・Firefoxの厳格なトラッキング�
 `https://<project-id>.firebaseapp.com/__/auth/:path*` にプロキシしているため、
 `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` をアプリ自身のドメイン（`<your-app>.vercel.app` や
 カスタムドメイン）に設定すれば、認証ハンドラも同一オリジンとして扱われ、上記の
-サードパーティストレージ問題が構造的に解消する。設定変更後は上記の「承認済みドメイン」
-にそのドメインが含まれていることを確認すること（`NEXT_PUBLIC_FIREBASE_PROJECT_ID` は
-プロキシ先の算出に使うため、正しい値を設定しておく）。
+サードパーティストレージ問題が構造的に解消する。
+
+**切り替え時に必要な設定はこの4つ（すべて揃わないとエラーになる）**:
+1. Vercel の `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` を素のホスト名（`https://`なし）で設定
+   （`NEXT_PUBLIC_*` はビルド時に埋め込まれるため、**値を保存しただけでは反映されず
+   再デプロイが必要**）
+2. Firebase Console → Authentication → Settings → 承認済みドメイン に同じドメインを追加
+3. Firebase Console → Authentication → Sign-in method → Google → ウェブ SDK の構成 から
+   Google Cloud Console のOAuthクライアント設定を開き、「承認済みのリダイレクト URI」に
+   `https://<your-app>.vercel.app/__/auth/handler` を追加（authDomain 変更で
+   redirect_uri も変わるため。未設定だと `redirect_uri_mismatch` エラーになる）
+4. `NEXT_PUBLIC_FIREBASE_PROJECT_ID` が正しいこと（プロキシ先の算出に使う）
 
 ---
 
