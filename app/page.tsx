@@ -151,6 +151,9 @@ function AppInner() {
   const startW   = trend.points.length ? Math.round(trend.points[0].smoothed * 10) / 10 : 0
   const remainKg = Math.max(0, curW - s.tgtW)
   const pct      = Math.min(100, Math.max(0, (startW - curW) / ((startW - s.tgtW) || 1) * 100))
+  // Unsmoothed — EWMA lags by design, so a display explicitly labeled "latest
+  // as-logged value" (Settings) needs the raw last weigh-in, not the trend.
+  const latestRawWeight = trend.points.length ? trend.points[trend.points.length - 1].raw : curW
 
   const tdeeWindow = DATA.slice(-TDEE_WINDOW_DAYS)
   const tdee = estimateAdaptiveTdee(tdeeWindow, estimateWeightTrend(tdeeWindow))
@@ -169,7 +172,7 @@ function AppInner() {
   const tabTitle = { home: 'ホーム', balance: '収支', forecast: '予実', settings: '設定' }[s.tab]
   const backdrop = s.dark ? '#05140f' : '#c4cfc8'
 
-  const props: TabProps = { s, set, c, data: DATA, daysLeft, dailyTarget, targetIntake, tdeeSource, curW, startW, remainKg, pct, onTrack, today, syncing, lastSynced, sync, weeklyAdvice, userEmail: user?.email ?? null }
+  const props: TabProps = { s, set, c, data: DATA, daysLeft, dailyTarget, targetIntake, tdeeSource, curW, latestRawWeight, startW, remainKg, pct, onTrack, today, syncing, lastSynced, sync, weeklyAdvice, userEmail: user?.email ?? null }
 
   const syncLabel = (() => {
     if (!lastSynced) return '未同期'

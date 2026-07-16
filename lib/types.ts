@@ -33,7 +33,8 @@ export interface TabProps {
   dailyTarget:  number
   targetIntake: number     // adaptive-TDEE-based target intake (kcal/day); see lib/forecast.ts
   tdeeSource:   TdeeSource
-  curW:         number
+  curW:         number     // trend (EWMA-smoothed) current weight — used for calculations
+  latestRawWeight: number  // most recent as-logged weigh-in, unsmoothed — for display only
   startW:       number
   remainKg:     number
   pct:          number
