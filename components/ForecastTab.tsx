@@ -2,7 +2,7 @@
 
 import type { TabProps } from '@/lib/types'
 import { fx, type DayData } from '@/lib/data'
-import { estimateWeightTrend, estimateAdaptiveTdee, buildTrajectory, TDEE_WINDOW_DAYS } from '@/lib/forecast'
+import { estimateWeightTrend, estimateAdaptiveTdee, buildTrajectory, buildBalancePaceTrajectory, TDEE_WINDOW_DAYS } from '@/lib/forecast'
 import type { C } from '@/lib/colors'
 import InfoTip from './InfoTip'
 
@@ -76,27 +76,37 @@ function WeightTrendChart({ d, tgtW, c, showLabels }: { d: DayData[], tgtW: numb
   )
 }
 
-// Predicted line is now a pure weight-vs-time trend extrapolation (outlier-
-// cleaned, EWMA-smoothed, Theil-Sen slope) — it no longer depends on
-// self-reported calorie balance. See lib/forecast.ts and docs/SPEC.md §5.2.4.
-function TrajectoryChart({ d, tgtW, days, c }: { d: DayData[], tgtW: number, days: number, c: C }) {
+// The predicted line has two selectable bases (see the basis toggle in
+// ForecastTab): 'trend' is a pure weight-vs-time extrapolation (outlier-
+// cleaned, EWMA-smoothed, Theil-Sen slope) that never depends on
+// self-reported calorie balance; 'balance' is an explicit "as-logged,
+// what-if" line — if the recent average logged calorie balance continues,
+// where does the trend weight go. See lib/forecast.ts and docs/SPEC.md §5.2.4.
+function TrajectoryChart({ d, tgtW, days, c, basis }: { d: DayData[], tgtW: number, days: number, c: C, basis: 'trend' | 'balance' }) {
   const W = 352, H = 214, pl = 30, pr = 12, pt = 12, pb = 36
   const iw = W - pl - pr, ih = H - pt - pb
 
   const trend = estimateWeightTrend(d)
-  const traj  = buildTrajectory(d, trend, days)
+  const traj  = basis === 'balance' ? buildBalancePaceTrajectory(d, trend, days) : buildTrajectory(d, trend, days)
 
   if (trend.n === 0 || traj.length === 0) {
     return (
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
         <text x={W / 2} y={H / 2} textAnchor="middle" fill={c.onSurfVar} fontSize={11}
-          fontFamily="Roboto, sans-serif">この期間の体重データがありません</text>
+          fontFamily="Roboto, sans-serif">
+          {basis === 'balance' && trend.n > 0 ? 'カロリー収支データが不足しています' : 'この期間の体重データがありません'}
+        </text>
       </svg>
     )
   }
 
   const measured = trend.points.map(p => ({ i: p.i, v: p.smoothed }))
-  const anchorI  = measured.length ? measured[0].i : 0
+  // "予測" should mean strictly "from today forward" for both bases. The
+  // balance-pace trajectory in particular has no meaningful value before
+  // today (it's a today-anchored what-if extrapolation, not a fit to
+  // history), so drawing it earlier than d.length-1 would just overlay a
+  // second, confusing line across the measured portion.
+  const todayI   = d.length - 1
   const horizon  = traj.length
   const predVals = traj.map(p => p.value)
 
@@ -123,7 +133,7 @@ function TrajectoryChart({ d, tgtW, days, c }: { d: DayData[], tgtW: number, day
       })}
       <line x1={X(0)} y1={Y(predVals[0])} x2={X(horizon - 1)} y2={Y(tgtW)}
         stroke={c.onSurfVar} strokeWidth={1.6} strokeDasharray="5 4" />
-      <polyline points={traj.filter(p => p.i >= anchorI).map(p => `${X(p.i)},${Y(p.value)}`).join(' ')}
+      <polyline points={traj.filter(p => p.i >= todayI).map(p => `${X(p.i)},${Y(p.value)}`).join(' ')}
         fill="none" stroke={c.tertiary} strokeWidth={2} strokeDasharray="5 3" />
       <polyline points={measured.map(m => `${X(m.i)},${Y(m.v)}`).join(' ')}
         fill="none" stroke={c.primary} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
@@ -136,7 +146,9 @@ function TrajectoryChart({ d, tgtW, days, c }: { d: DayData[], tgtW: number, day
           fill={c.primary} fontSize={9} fontWeight={600} fontFamily="Roboto">実測</text>
       )}
       <text x={X(horizon - 1)} y={Y(predVals[horizon - 1]) + 11} textAnchor="end"
-        fill={c.tertiary} fontSize={9} fontWeight={600} fontFamily="Roboto">予測</text>
+        fill={c.tertiary} fontSize={9} fontWeight={600} fontFamily="Roboto">
+        {basis === 'balance' ? '予測(収支)' : '予測(トレンド)'}
+      </text>
       <line x1={X(d.length - 1)} y1={pt} x2={X(d.length - 1)} y2={axisY}
         stroke={c.primary} strokeWidth={1} strokeDasharray="2 3" opacity={0.45} />
       <line x1={pl} x2={W - pr} y1={axisY} y2={axisY} stroke={c.outlineVar} strokeWidth={1} />
@@ -244,6 +256,12 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabP
   // inside the chart, so this only narrows the measured/observed portion.
   const tWindow = s.tRange === 0 ? data : data.slice(Math.max(0, data.length - s.tRange))
 
+  // Forecast horizon: normally the goal date, but a larger period button lets
+  // the user look further out ("少し先まで") than the goal — never shorter,
+  // so the goal line stays visible. "全期間" has no natural future value, so
+  // it keeps the goal-date horizon.
+  const trajHorizon = s.tRange === 0 ? daysLeft : Math.max(daysLeft, s.tRange)
+
   // Pace diagnostic: fixed TDEE_WINDOW_DAYS window (independent of tRange),
   // comparing logged intake / adaptive TDEE / Google Health's estimated burn —
   // a large gap between adaptive TDEE and the device estimate is consistent
@@ -314,7 +332,7 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabP
             <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
               体重トラジェクトリ
               <InfoTip c={c} text={
-                '実測(平滑)＝実際の体重(外れ値除去・平滑化)。予測＝体重の実測トレンドをそのまま延長した場合に到達する体重。目標＝目標体重までの直線。\n\n「オフトラック」= 目標達成に必要なペースより実際の減量ペースが遅い状態。「オントラック」= 必要なペース以上で進んでいる状態。'
+                '実測(平滑)＝実際の体重(外れ値除去・平滑化)。\n\n予測(トレンド)＝体重の実測トレンドをそのまま延長した場合に到達する体重(申告カロリーに依存しない)。予測(収支)＝直近の申告カロリー収支のペースをこのまま続けた場合に到達する体重(こちらは申告に依存するので、記録漏れがあると実際とズレる)。2つが大きくズレている場合、記録漏れ等の可能性があります。\n\n目標＝目標体重までの直線。期間ボタンを大きくすると、目標日より先まで予測を延長できます。\n\n「オフトラック」= 目標達成に必要なペースより実際の減量ペースが遅い状態。「オントラック」= 必要なペース以上で進んでいる状態。'
               } />
             </div>
             <div style={{ fontSize: 11, color: c.onSurfVar, marginTop: 2 }}>予測 vs 実測 vs 目標</div>
@@ -330,19 +348,23 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabP
             {onTrack ? 'オントラック' : 'オフトラック'}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', padding: '0 4px' }}>
+        <div style={{ display: 'flex', gap: 6, padding: '0 4px' }}>
+          {rangeBtn(s.trajBasis === 'trend',   'トレンド',   () => set({ trajBasis: 'trend' }))}
+          {rangeBtn(s.trajBasis === 'balance', 'カロリー収支', () => set({ trajBasis: 'balance' }))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', padding: '6px 4px 0' }}>
           {rangeBtn(s.tRange === 7,  '7日',   () => set({ tRange: 7 }))}
           {rangeBtn(s.tRange === 30, '30日',  () => set({ tRange: 30 }))}
           {rangeBtn(s.tRange === 90, '90日',  () => set({ tRange: 90 }))}
           {rangeBtn(s.tRange === 0,  '全期間', () => set({ tRange: 0 }))}
         </div>
         <div style={{ margin: '8px 0 2px' }}>
-          <TrajectoryChart d={tWindow} tgtW={s.tgtW} days={daysLeft} c={c} />
+          <TrajectoryChart d={tWindow} tgtW={s.tgtW} days={trajHorizon} c={c} basis={s.trajBasis} />
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '4px 4px 0', fontSize: 11, color: c.onSurfVar }}>
           {[
             { style: { width: 14, height: 0, borderTop: `3px solid ${c.primary}`, display: 'inline-block' }, label: '実測(平滑)' },
-            { style: { width: 14, height: 0, borderTop: `2px dashed ${c.tertiary}`, display: 'inline-block' }, label: '予測' },
+            { style: { width: 14, height: 0, borderTop: `2px dashed ${c.tertiary}`, display: 'inline-block' }, label: s.trajBasis === 'balance' ? '予測(収支)' : '予測(トレンド)' },
             { style: { width: 14, height: 0, borderTop: `2px dashed ${c.onSurfVar}`, display: 'inline-block' }, label: '目標' },
           ].map(item => (
             <span key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>

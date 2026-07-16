@@ -19,6 +19,7 @@ export interface State {
   wRange:   number       // weight chart window: 7 | 30 | 90 | 0 (all)
   wOff:     number       // weight chart period offset (0 = latest)
   tRange:   number       // trajectory window: 7 | 30 | 90 | 0 (all)
+  trajBasis: 'trend' | 'balance'   // trajectory prediction basis toggle
 }
 
 export type Updater = (patch: Partial<State>) => void

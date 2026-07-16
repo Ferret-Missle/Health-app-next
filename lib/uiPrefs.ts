@@ -10,6 +10,7 @@ export interface UiPrefs {
   view?:   'cumulative' | 'daily'       // balance view
   wRange?: number                       // weight-trend window: 7 | 30 | 90 | 0
   tRange?: number                       // trajectory window: 7 | 30 | 90 | 0
+  trajBasis?: 'trend' | 'balance'       // trajectory prediction basis toggle
 }
 
 const keyFor = (uid: string) => `hp:prefs:${uid}`

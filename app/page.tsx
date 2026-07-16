@@ -46,6 +46,7 @@ function AppInner() {
     balOff: 0, grpOff: 0, calOff: 0, pfcOff: 0,
     wRange: 90, wOff: 0,
     tRange: 0,
+    trajBasis: 'trend',
   })
 
   const { data: DATA, syncing, progress, lastSynced, sync } = useHealthData()
@@ -103,14 +104,15 @@ function AppInner() {
     if (p.view   != null) patch.view   = p.view
     if (p.wRange != null) patch.wRange = p.wRange
     if (p.tRange != null) patch.tRange = p.tRange
+    if (p.trajBasis != null) patch.trajBasis = p.trajBasis
     if (Object.keys(patch).length) set(patch)
   }, [user])
 
   useEffect(() => {
     const uid = user?.uid
     if (!uid || !prefsLoaded.current) return
-    saveUiPrefs(uid, { range: s.range, view: s.view, wRange: s.wRange, tRange: s.tRange })
-  }, [user, s.range, s.view, s.wRange, s.tRange])
+    saveUiPrefs(uid, { range: s.range, view: s.view, wRange: s.wRange, tRange: s.tRange, trajBasis: s.trajBasis })
+  }, [user, s.range, s.view, s.wRange, s.tRange, s.trajBasis])
 
   // Persist goal settings to the cloud; load stored values on mount.
   useSettings(

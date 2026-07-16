@@ -293,6 +293,46 @@ export function buildTrajectory(data: DayData[], trend: WeightTrend, horizonDays
   return out
 }
 
+/**
+ * "If this logged calorie-balance pace continues" projection — a straight
+ * line from today's trend weight, moving at a constant rate derived from the
+ * average of data[].d (burn − intake) over the most recent window, using the
+ * fixed K_CONST. Unlike buildTrajectory (weight-vs-time only), this
+ * deliberately DOES depend on self-reported intake — it's an explicit
+ * "as-logged, what-if" line, not a bias-corrected estimate, so a gap between
+ * this line and the trend-based one is itself informative (see the pace
+ * diagnostic card, which surfaces the same gap as adaptive TDEE vs. Google
+ * Health). Requires at least 3 logged-intake days in the window; returns []
+ * otherwise (same empty convention as buildTrajectory).
+ */
+export function buildBalancePaceTrajectory(
+  data: DayData[],
+  trend: WeightTrend,
+  horizonDays: number,
+  opts: { windowDays?: number; kConst?: number } = {},
+): TrajectoryPoint[] {
+  const { windowDays = TDEE_WINDOW_DAYS, kConst = K_CONST } = opts
+  if (trend.n === 0 || data.length === 0) return []
+
+  const window = data.slice(-windowDays)
+  const loggedDays = window.filter(x => x.intake > 0)
+  if (loggedDays.length < 3) return []
+  const avgD = loggedDays.reduce((s, x) => s + x.d, 0) / loggedDays.length
+
+  const anchorDate   = data[data.length - 1].dt
+  const anchorWeight = trend.latestSmoothed
+  const dailyDeltaKg = -avgD / kConst  // d>0 (surplus) ⇒ weight loss over time
+
+  const horizon = data.length + horizonDays
+  const out: TrajectoryPoint[] = []
+  for (let i = 0; i < horizon; i++) {
+    const dt = i < data.length ? data[i].dt : new Date(data[0].dt.getTime() + i * DAY_MS)
+    const daysFromAnchor = (dt.getTime() - anchorDate.getTime()) / DAY_MS
+    out.push({ i, dt, value: anchorWeight + dailyDeltaKg * daysFromAnchor })
+  }
+  return out
+}
+
 // ── On-track evaluation (bias-immune replacement for comparing a single
 // self-reported day's balance against the target surplus) ──────────────────
 
