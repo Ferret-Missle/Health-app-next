@@ -1,9 +1,8 @@
 import { sql } from './db'
 import { rowsToDayData, type DailyRow } from './data'
-import { buildAdvicePrompt } from './advisor'
+import { buildAdvicePrompt, LONG_TERM_WINDOW_DAYS } from './advisor'
 import { chat, type LlmConfig } from './groq'
 import { estimateQuota, recordUsage, cacheRpd, getCachedRpd, type QuotaEstimate } from './quota'
-import { TDEE_WINDOW_DAYS } from './forecast'
 
 // Shared advice-generation core, used by both the manual route and the weekly
 // auto-run (FR-4.4). Keeps quota tracking / usage recording in one place.
@@ -24,7 +23,7 @@ function todayJst(): string {
   return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
-async function recentData(userId: string, days = TDEE_WINDOW_DAYS) {
+async function recentData(userId: string, days = LONG_TERM_WINDOW_DAYS) {
   // Exclude today (JST): the current day's food log is usually incomplete, so it
   // shows up as an outlier (near-zero intake). Advice should look at completed
   // days only. We fetch one extra day and drop today to keep `days` full.
@@ -44,10 +43,10 @@ async function recentData(userId: string, days = TDEE_WINDOW_DAYS) {
 }
 
 /**
- * Generate advice from the last TDEE_WINDOW_DAYS days and record token usage.
- * Performs a pre-flight quota check for the default (Groq) provider; BYOK
- * skips it (the user's own budget). Does NOT persist to advice_log — the
- * caller decides that.
+ * Generate advice from the last LONG_TERM_WINDOW_DAYS days and record token
+ * usage. Performs a pre-flight quota check for the default (Groq) provider;
+ * BYOK skips it (the user's own budget). Does NOT persist to advice_log —
+ * the caller decides that.
  */
 export async function generateAdvice(args: GenerateArgs): Promise<GenerateResult> {
   const provider = args.cfg.provider ?? 'groq'

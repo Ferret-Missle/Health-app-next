@@ -2,8 +2,16 @@ import type { DayData } from './data'
 import type { LlmMessage } from './groq'
 import { estimateWeightTrend, estimateAdaptiveTdee, computeDailyTarget, evaluateOnTrack, TDEE_WINDOW_DAYS } from './forecast'
 
+// How far back to fetch for advice generation. Deliberately longer than
+// TDEE_WINDOW_DAYS (which still drives the trend/TDEE/target-intake
+// calculations below, unchanged) — this wider window exists only to let the
+// prompt contrast a genuine long-term trend against the recent one, so the
+// model can praise sustained effort while gently flagging a recent dip
+// instead of reacting to the last 7 days in isolation.
+export const LONG_TERM_WINDOW_DAYS = 90
+
 export interface AdviceContext {
-  data: DayData[]   // recent days (ascending), already in DayData shape
+  data: DayData[]   // ascending DayData; ideally spans LONG_TERM_WINDOW_DAYS (degrades gracefully with less)
   tgtW: number      // target weight (kg)
   days: number      // days remaining to target
 }
@@ -21,6 +29,12 @@ const SYSTEM = `あなたは日本語で対応する、データ駆動型のパ�
 - 収支が悪化した日が1日あっても、その日単体を繰り返し責めない。数日分の助言で同じ日を何度も持ち出さない。
 - 直近7日が目標収支より遅れている場合、【直近7日の状況】の「挽回プラン」の数値を使い、「今週中に無理に取り戻す（1日あたりの上乗せ量）」と「無理せず残りの目標期間全体で薄く均す（1日あたりの上乗せ量）」の両方を提示し、上乗せ量が現実的でない場合は後者（期間全体で均す）を推す。「今週はこのままで、来週以降で少しずつ調整すればいい」という前向きな着地でよい。
 
+# 長期と直近を対比する（親身なトーンの核）
+- 【直近7日の状況】には「長期ペース」（データがある期間全体の傾向）と「直近ペース」（実測ペース vs 目標ペース、直近${TDEE_WINDOW_DAYS}日）の両方がある。必ず両方を見比べてから語る。
+- 長期は良好（週あたりの減量が着実）なのに直近だけ乱れている場合：まず長期の頑張りを具体的な数値で認める → その上で「直近だけ流れが変わっている」と限定的に指摘する → 「〇〇分の影響」と原因を断定はせず「最近の傾向の変化」として触れる（【日別データ】の「食事[...]」欄に手がかりがあれば使ってよい）。長期の実績を否定するような言い方（「結局ダメだった」等）は禁止。
+- 逆に長期が停滞気味でも直近が改善している場合：その改善を最初に評価し、継続を後押しする。
+- 「直近7日の平均摂取 vs その前3週間の平均」の差分が示されている場合、直近が明確に増えているなら①のパターン、明確に減っているなら②のパターンとして使う。差が小さい（誤差程度）なら対比の話題にしない。
+
 # データの扱い（誤った断定を避ける）
 - 摂取kcalが極端に低い日（例: 1000kcal未満や「未記録」）は、食事の記録漏れの可能性が高い。これを「節制できた」と即断せず、記録の不確実性に触れる。
 - 重要: 「収支が黒字（プラス）なのに実測ペースが目標ペースに届いていない」場合、最も疑うべきは摂取の記録漏れ（実際はもっと食べている）である。この時は収支の黒字を額面通り評価せず、まず記録の精度を上げる助言を最優先にする。アダプティブTDEE（Google Health実測消費より低ければ過小申告の兆候）の値も参考にしてよい。
@@ -30,7 +44,7 @@ const SYSTEM = `あなたは日本語で対応する、データ駆動型のパ�
 
 # 出力フォーマット（厳守）
 ①サマリ: 1文。目標ペースに対し「順調 / やや遅れ / 要改善」のどれかを必ず明言し、続けて「1日の目標摂取カロリー（約○kcal以下）」を必ず提示する。
-②気づき(2〜3点): 各点で必ず具体的な数値を1つ以上引用する（収支/PFC/睡眠/歩数のいずれか）。一般論ではなく、このユーザーのこの週の数字に基づく指摘のみ。収支と体重ペースが食い違う場合は、その理由（記録漏れ等）まで踏み込んで述べる。
+②気づき(2〜3点): 各点で必ず具体的な数値を1つ以上引用する（収支/PFC/睡眠/歩数/長期ペースのいずれか）。一般論ではなく、このユーザーのこの週の数字に基づく指摘のみ。収支と体重ペースが食い違う場合は、その理由（記録漏れ等）まで踏み込んで述べる。長期と直近で傾向が異なる場合は、その対比を気づきの1点として必ず含める。
 ③明日のアクション(2〜3点): 即実行できる具体策。各アクションは「対象＋量＋カロリーの目安」を必ず含め、曖昧な言い回し（「高カロリーな食品を減らす」等）にしない。最低1つは運動や食事タイミング等の食事量以外の助言にする。
 
 # アクションの書き方（最重要・誤りを防ぐ）
@@ -50,10 +64,14 @@ const SYSTEM = `あなたは日本語で対応する、データ駆動型のパ�
 const r = (n: number) => Math.round(n)
 const r1 = (n: number) => Math.round(n * 10) / 10
 
-/** Build the chat messages for an advice request. `ctx.data` should span at
- *  least TDEE_WINDOW_DAYS for a stable weight trend / adaptive-TDEE estimate. */
+/** Build the chat messages for an advice request. `ctx.data` should ideally
+ *  span LONG_TERM_WINDOW_DAYS — the trend/TDEE/target-intake calculations
+ *  below only ever use the trailing TDEE_WINDOW_DAYS of it (unchanged
+ *  behavior), but the extra history lets the prompt contrast a long-term
+ *  trend against the recent one. Degrades gracefully with less data. */
 export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
   const last7 = ctx.data.slice(-7)
+  const tdeeWindowData = ctx.data.slice(-TDEE_WINDOW_DAYS)
 
   // Weekly aggregates (7-day detail table / diary review — unrelated to the
   // TDEE_WINDOW_DAYS window used for the trend/TDEE calc below).
@@ -61,17 +79,43 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
   const avgBurn7  = last7.length ? last7.reduce((a, b) => a + b.burn, 0) / last7.length : 0
   const avgIntake = last7.length ? last7.reduce((a, b) => a + b.intake, 0) / last7.length : 0
 
-  // Weight trend (outlier-cleaned, EWMA-smoothed, weight-vs-time only — never
-  // against self-reported balance) drives both the trajectory pace comparison
-  // and the adaptive-TDEE-based target intake. See lib/forecast.ts.
-  const trend  = estimateWeightTrend(ctx.data)
-  const curW   = trend.latestSmoothed
-  const tdee   = estimateAdaptiveTdee(ctx.data, trend)
-  const avgBurnWindow = ctx.data.length ? ctx.data.reduce((s, x) => s + x.burn, 0) / ctx.data.length : 0
+  // Recent weight trend (outlier-cleaned, EWMA-smoothed, weight-vs-time only
+  // — never against self-reported balance) drives the trajectory pace
+  // comparison and the adaptive-TDEE-based target intake, same as before
+  // ctx.data was widened to LONG_TERM_WINDOW_DAYS. See lib/forecast.ts.
+  const recentTrend = estimateWeightTrend(tdeeWindowData)
+  const curW   = recentTrend.latestSmoothed
+  const tdee   = estimateAdaptiveTdee(tdeeWindowData, recentTrend)
+  const avgBurnWindow = tdeeWindowData.length ? tdeeWindowData.reduce((s, x) => s + x.burn, 0) / tdeeWindowData.length : 0
   const { dailyTargetSurplus: dailyTarget, targetIntake, avgTdee, tdeeSource } =
     computeDailyTarget({ curW, tgtW: ctx.tgtW, daysLeft: ctx.days, tdee, avgBurnFallback: avgBurnWindow })
   const { onTrack, requiredPacePerDay, actualPacePerDay } =
-    evaluateOnTrack({ curW, tgtW: ctx.tgtW, daysLeft: ctx.days, trend })
+    evaluateOnTrack({ curW, tgtW: ctx.tgtW, daysLeft: ctx.days, trend: recentTrend })
+
+  // Long-term trend: the full fetched window (up to LONG_TERM_WINDOW_DAYS),
+  // used only for the long-vs-recent contrast below — never feeds into the
+  // target-intake/TDEE numbers above, so existing calculations are unaffected.
+  const longTrend = estimateWeightTrend(ctx.data)
+  const longTermLine = longTrend.n >= 10 && longTrend.spanDays >= 21
+    ? `長期ペース(過去${r(longTrend.spanDays)}日間の傾向): 週あたり${r1(longTrend.slopePerDay * 7)}kg`
+    : null
+
+  // Recent-vs-baseline intake shift: catches "long-term diligent, but a
+  // recent stretch (e.g. a run of social events) pushed intake up" without
+  // needing to know *why* — just that the last 7 days' logged average
+  // diverges from the 3 weeks before that. Logged-intake days only on both
+  // sides, so differing logging-gap rates don't skew the comparison.
+  const loggedDays7   = last7.filter(x => x.intake > 0)
+  const avgIntakeLogged7 = loggedDays7.length ? loggedDays7.reduce((s, x) => s + x.intake, 0) / loggedDays7.length : 0
+  const priorWindow    = ctx.data.slice(-28, -7)
+  const priorLogged    = priorWindow.filter(x => x.intake > 0)
+  const avgIntakePrior = priorLogged.length ? priorLogged.reduce((s, x) => s + x.intake, 0) / priorLogged.length : 0
+  const intakeShiftLine = priorLogged.length >= 7 && loggedDays7.length >= 3
+    ? (() => {
+        const diff = avgIntakeLogged7 - avgIntakePrior
+        return `直近7日の平均摂取${r(avgIntakeLogged7)}kcal は、その前3週間の平均${r(avgIntakePrior)}kcal と比べて${diff >= 0 ? '+' : ''}${r(diff)}kcal`
+      })()
+    : null
 
   const rows = last7.map(d => {
     const pfc = `P${r(d.p)}/F${r(d.f)}/C${r(d.cc)}g`
@@ -107,9 +151,9 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
 
   // Protein target: a common rule of thumb while cutting (retain lean mass),
   // 1.6g/kg of the (stable, trend-based) current weight. Averaged over
-  // logged-intake days only so a logging gap doesn't manufacture a false
-  // "shortfall" the same way avgLoggedIntake in lib/forecast.ts avoids it.
-  const loggedDays7  = last7.filter(x => x.intake > 0)
+  // logged-intake days only (loggedDays7, computed above) so a logging gap
+  // doesn't manufacture a false "shortfall" the same way avgLoggedIntake in
+  // lib/forecast.ts avoids it.
   const avgProtein7  = loggedDays7.length ? loggedDays7.reduce((s, x) => s + x.p, 0) / loggedDays7.length : 0
   const proteinTarget = curW > 0 ? Math.round(curW * 1.6) : 0
   const proteinLine = proteinTarget > 0 && loggedDays7.length >= 3
@@ -132,6 +176,8 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
     `参考: Google Health推定消費(直近${TDEE_WINDOW_DAYS}日平均) ${r(avgBurnWindow)}kcal/日`,
     `直近7日の累積収支: ${sumD >= 0 ? '+' : ''}${r(sumD)}kcal (平均 消費${r(avgBurn7)} / 摂取${r(avgIntake)})`,
     paceLine,
+    longTermLine,
+    intakeShiftLine,
     catchUpLine,
     proteinLine,
     stepsLine,
