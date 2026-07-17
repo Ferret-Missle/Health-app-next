@@ -20,6 +20,7 @@ import ForecastTab from '@/components/ForecastTab'
 import SettingsTab from '@/components/SettingsTab'
 import AuthGate from '@/components/AuthGate'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import PersonaOnboarding from '@/components/PersonaOnboarding'
 
 const NAV = [
   { key: 'home'     as Tab, icon: 'home',       label: 'ホーム' },
@@ -47,6 +48,7 @@ function AppInner() {
     wRange: 90, wOff: 0,
     tRange: 0,
     trajBasis: 'trend',
+    advisorPersona: null, advisorPersonaCustom: null,
   })
 
   const { data: DATA, syncing, progress, lastSynced, sync } = useHealthData()
@@ -116,8 +118,14 @@ function AppInner() {
 
   // Persist goal settings to the cloud; load stored values on mount.
   useSettings(
-    { tgtW: s.tgtW, tgtDate: s.tgtDate, llm: s.llm },
-    loaded => { set({ tgtW: loaded.tgtW, tgtDate: loaded.tgtDate, llm: loaded.llm }); setSettingsLoaded(true) },
+    { tgtW: s.tgtW, tgtDate: s.tgtDate, llm: s.llm, advisorPersona: s.advisorPersona, advisorPersonaCustom: s.advisorPersonaCustom },
+    loaded => {
+      set({
+        tgtW: loaded.tgtW, tgtDate: loaded.tgtDate, llm: loaded.llm,
+        advisorPersona: loaded.advisorPersona, advisorPersonaCustom: loaded.advisorPersonaCustom,
+      })
+      setSettingsLoaded(true)
+    },
   )
 
   // Days remaining is DERIVED from the goal date, so it counts down over time
@@ -167,6 +175,7 @@ function AppInner() {
   // missed). Wait until goal settings are loaded so we pass the real target.
   const { advice: weeklyAdvice } = useWeeklyAdvice({
     tgtW: s.tgtW, days: daysLeft, provider: s.llm, ready: settingsLoaded,
+    persona: s.advisorPersona ?? 'trainer', personaCustom: s.advisorPersonaCustom,
   })
 
   const tabTitle = { home: 'ホーム', balance: '収支', forecast: '予実', settings: '設定' }[s.tab]
@@ -326,6 +335,9 @@ function AppInner() {
 
         </div>
       </div>
+      {settingsLoaded && s.advisorPersona == null && (
+        <PersonaOnboarding c={c} onChange={(persona, personaCustom) => set({ advisorPersona: persona, advisorPersonaCustom: personaCustom })} />
+      )}
     </ThemeProvider>
   )
 }

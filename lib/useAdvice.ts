@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { authFetch } from './authFetch'
+import type { AdvisorPersona } from './advisor'
 
 export interface QuotaInfo {
   remaining:      number
@@ -14,6 +15,8 @@ export type AdviceStatus = 'idle' | 'loading' | 'done' | 'error' | 'exhausted'
 interface AdviceArgs {
   tgtW:     number
   days:     number
+  persona:  AdvisorPersona
+  personaCustom?: string | null
   provider: 'groq' | 'byok'
   apiKey?:  string
 }

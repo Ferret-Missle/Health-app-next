@@ -31,7 +31,10 @@ export default function HomeTab({ s, set, c, data, daysLeft, dailyTarget, curW, 
   const askAdvice = () => {
     if (byokMissing) return
     const apiKey = s.llm === 'byok' ? getByokKey() : undefined
-    ask({ tgtW: s.tgtW, days: daysLeft, provider: s.llm, apiKey })
+    ask({
+      tgtW: s.tgtW, days: daysLeft, provider: s.llm, apiKey,
+      persona: s.advisorPersona ?? 'trainer', personaCustom: s.advisorPersonaCustom,
+    })
   }
 
   const last7  = data.slice(-7)
