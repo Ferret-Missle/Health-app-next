@@ -14,7 +14,7 @@ import { RECENT_SYNC_DAYS, FULL_SYNC_DAYS } from '@/lib/useHealthData'
 import { fx } from '@/lib/data'
 import { VERSION_LABEL } from '@/lib/version'
 
-export default function SettingsTab({ s, set, c, daysLeft, curW, dailyTarget, syncing, lastSynced, sync }: TabProps) {
+export default function SettingsTab({ s, set, c, daysLeft, curW, latestRawWeight, dailyTarget, syncing, lastSynced, sync }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
 
   const lastSyncedLabel = lastSynced
@@ -106,7 +106,7 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, dailyTarget, sy
             <span className="ms" style={{ fontSize: 18, color: c.primary }}>monitor_weight</span>
             <span style={{ fontSize: 13, color: c.onSurfVar }}>現在の体重(最新の取得値)</span>
           </div>
-          <span style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>{fx(curW)} kg</span>
+          <span style={{ fontSize: 18, fontWeight: 600, fontFeatureSettings: '"tnum"' }}>{fx(latestRawWeight)} kg</span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 6px' }}>

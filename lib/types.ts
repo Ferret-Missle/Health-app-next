@@ -19,6 +19,7 @@ export interface State {
   wRange:   number       // weight chart window: 7 | 30 | 90 | 0 (all)
   wOff:     number       // weight chart period offset (0 = latest)
   tRange:   number       // trajectory window: 7 | 30 | 90 | 0 (all)
+  trajBasis: 'trend' | 'balance'   // trajectory prediction basis toggle
 }
 
 export type Updater = (patch: Partial<State>) => void
@@ -32,7 +33,8 @@ export interface TabProps {
   dailyTarget:  number
   targetIntake: number     // adaptive-TDEE-based target intake (kcal/day); see lib/forecast.ts
   tdeeSource:   TdeeSource
-  curW:         number
+  curW:         number     // trend (EWMA-smoothed) current weight — used for calculations
+  latestRawWeight: number  // most recent as-logged weigh-in, unsmoothed — for display only
   startW:       number
   remainKg:     number
   pct:          number

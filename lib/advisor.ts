@@ -15,6 +15,11 @@ const SYSTEM = `あなたは日本語で対応する、データ駆動型のパ�
 - 収支 d = 消費kcal − 摂取kcal。d>0(黒字)=減量に有利、d<0(赤字)=オーバー。
 - 「日次目標黒字」が今日の達成基準。直近の平均収支がこれを上回るか下回るかを必ず最初に判定する。
 - 実測ペース(体重の実測トレンド、週あたり)と目標ペースの差が正なら「ペースが遅い」、負なら「先行」。
+- 栄養バランス（タンパク質が目安に対して足りているか）と活動量（歩数が目安に対して足りているか）も、データがあれば評価軸に含める。
+
+# 単日の暴食を引きずらない（重要）
+- 収支が悪化した日が1日あっても、その日単体を繰り返し責めない。数日分の助言で同じ日を何度も持ち出さない。
+- 直近7日が目標収支より遅れている場合、【直近7日の状況】の「挽回プラン」の数値を使い、「今週中に無理に取り戻す（1日あたりの上乗せ量）」と「無理せず残りの目標期間全体で薄く均す（1日あたりの上乗せ量）」の両方を提示し、上乗せ量が現実的でない場合は後者（期間全体で均す）を推す。「今週はこのままで、来週以降で少しずつ調整すればいい」という前向きな着地でよい。
 
 # データの扱い（誤った断定を避ける）
 - 摂取kcalが極端に低い日（例: 1000kcal未満や「未記録」）は、食事の記録漏れの可能性が高い。これを「節制できた」と即断せず、記録の不確実性に触れる。
@@ -90,6 +95,35 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
     ? '目標摂取カロリー: データ不足のため算出不可'
     : `目標摂取カロリー: 1日あたり約${r(targetIntake)}kcal以下 (${tdeeSource === 'adaptive' ? 'アダプティブTDEE' : 'Google Health推定消費'}${r(avgTdee)} − 目標黒字${r(dailyTarget)})`
 
+  // Catch-up framing: rather than repeatedly flagging one bad day with no way
+  // forward, compare "fully offset within the next 7 days" against "spread
+  // gently across the whole remaining goal period" so the model can recommend
+  // whichever is realistic. Only shown once behind by a non-trivial amount.
+  const shortfall = dailyTarget * 7 - sumD  // positive = behind this week's target sum
+  const catchUpLine =
+    shortfall > 50   ? `挽回プラン: 今週の目標収支に対し${r(shortfall)}kcal不足。今週中に取り戻すなら1日+${r(shortfall / 7)}kcal上乗せ、無理せず残り${ctx.days}日全体で均すなら1日+${ctx.days > 0 ? r(shortfall / ctx.days) : 0}kcalの上乗せで済む` :
+    shortfall < -50  ? `挽回プラン: 今週は目標収支を${r(-shortfall)}kcal上回るペースで先行` :
+                       `挽回プラン: 今週の収支はほぼ目標どおり`
+
+  // Protein target: a common rule of thumb while cutting (retain lean mass),
+  // 1.6g/kg of the (stable, trend-based) current weight. Averaged over
+  // logged-intake days only so a logging gap doesn't manufacture a false
+  // "shortfall" the same way avgLoggedIntake in lib/forecast.ts avoids it.
+  const loggedDays7  = last7.filter(x => x.intake > 0)
+  const avgProtein7  = loggedDays7.length ? loggedDays7.reduce((s, x) => s + x.p, 0) / loggedDays7.length : 0
+  const proteinTarget = curW > 0 ? Math.round(curW * 1.6) : 0
+  const proteinLine = proteinTarget > 0 && loggedDays7.length >= 3
+    ? `タンパク質: 直近7日平均${r(avgProtein7)}g (目安${proteinTarget}g ≈ 体重×1.6g/kg)`
+    : null
+
+  // Activity: a commonly-cited public-health reference (8,000 steps/day),
+  // shown only when step data actually exists (many users won't have it).
+  const loggedSteps7 = last7.filter(x => (x.steps ?? 0) > 0)
+  const avgSteps7 = loggedSteps7.length ? loggedSteps7.reduce((s, x) => s + (x.steps ?? 0), 0) / loggedSteps7.length : 0
+  const stepsLine = loggedSteps7.length >= 3
+    ? `歩数: 直近7日平均${r(avgSteps7)}歩 (参考目安 8,000歩/日)`
+    : null
+
   const summary = [
     `目標体重: ${r1(ctx.tgtW)}kg / 残り${ctx.days}日`,
     curW > 0 ? `現在体重(トレンド): ${r1(curW)}kg` : '体重データ: 不足(直近の測定なし)',
@@ -98,7 +132,10 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
     `参考: Google Health推定消費(直近${TDEE_WINDOW_DAYS}日平均) ${r(avgBurnWindow)}kcal/日`,
     `直近7日の累積収支: ${sumD >= 0 ? '+' : ''}${r(sumD)}kcal (平均 消費${r(avgBurn7)} / 摂取${r(avgIntake)})`,
     paceLine,
-  ].join('\n')
+    catchUpLine,
+    proteinLine,
+    stepsLine,
+  ].filter((line): line is string => line != null).join('\n')
 
   const user = `【直近7日の状況】\n${summary}\n\n【日別データ】\n${rows}\n\n上記をもとにアドバイスをください。`
 
