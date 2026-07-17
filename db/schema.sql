@@ -74,13 +74,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS advice_log_weekly_uniq
 
 -- User goal/preferences. One row per user, keyed by user_id.
 CREATE TABLE IF NOT EXISTS user_settings (
-  user_id     TEXT        PRIMARY KEY,
-  target_kg   NUMERIC(5,2) NOT NULL DEFAULT 72.0,
-  target_days INTEGER     NOT NULL DEFAULT 86,   -- legacy, superseded by target_date
-  target_date DATE,                              -- absolute goal date; days-left is derived from it
-  llm         TEXT        NOT NULL DEFAULT 'groq',
-  updated_at  TIMESTAMPTZ DEFAULT NOW()
+  user_id                TEXT        PRIMARY KEY,
+  target_kg              NUMERIC(5,2) NOT NULL DEFAULT 72.0,
+  target_days            INTEGER     NOT NULL DEFAULT 86,   -- legacy, superseded by target_date
+  target_date            DATE,                              -- absolute goal date; days-left is derived from it
+  llm                    TEXT        NOT NULL DEFAULT 'groq',
+  advisor_persona        TEXT,                              -- 'friend'|'trainer'|'strict'|'custom'; NULL = not chosen yet
+  advisor_persona_custom TEXT,                               -- free-text voice, only meaningful when advisor_persona='custom'
+  updated_at             TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Add target_date to pre-existing tables (idempotent).
+-- Add columns to pre-existing tables (idempotent).
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS target_date DATE;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS advisor_persona TEXT;
+ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS advisor_persona_custom TEXT;

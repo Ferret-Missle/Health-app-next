@@ -13,6 +13,7 @@ import { useLinkStatus } from '@/lib/useLinkStatus'
 import { RECENT_SYNC_DAYS, FULL_SYNC_DAYS } from '@/lib/useHealthData'
 import { fx } from '@/lib/data'
 import { VERSION_LABEL } from '@/lib/version'
+import PersonaPicker from './PersonaPicker'
 
 export default function SettingsTab({ s, set, c, daysLeft, curW, latestRawWeight, dailyTarget, syncing, lastSynced, sync }: TabProps) {
   const fmt = (n: number) => Math.round(n).toLocaleString('ja-JP')
@@ -227,6 +228,16 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, latestRawWeight
       <div style={{ fontSize: 11, fontWeight: 600, color: c.onSurfVar, letterSpacing: '.6px', margin: '6px 4px 0' }}>AIアドバイザー (LLM)</div>
 
       <div style={{ background: c.surfLow, borderRadius: 24, padding: 18 }}>
+        <div style={{ fontSize: 13, color: c.onSurfVar, marginBottom: 10 }}>キャラクター</div>
+        <div style={{ marginBottom: 18 }}>
+          <PersonaPicker
+            c={c}
+            persona={s.advisorPersona}
+            personaCustom={s.advisorPersonaCustom}
+            onChange={(persona, personaCustom) => set({ advisorPersona: persona, advisorPersonaCustom: personaCustom })}
+          />
+        </div>
+
         <div style={{ fontSize: 13, color: c.onSurfVar, marginBottom: 10 }}>プロバイダ</div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button type="button" onClick={() => set({ llm: 'groq' })} style={llmBtnSt(s.llm === 'groq')}>Groq(無料)</button>

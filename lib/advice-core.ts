@@ -1,6 +1,6 @@
 import { sql } from './db'
 import { rowsToDayData, type DailyRow } from './data'
-import { buildAdvicePrompt, LONG_TERM_WINDOW_DAYS } from './advisor'
+import { buildAdvicePrompt, LONG_TERM_WINDOW_DAYS, type AdvisorPersona } from './advisor'
 import { chat, type LlmConfig } from './groq'
 import { estimateQuota, recordUsage, cacheRpd, getCachedRpd, type QuotaEstimate } from './quota'
 
@@ -12,6 +12,8 @@ export interface GenerateArgs {
   tgtW: number
   days: number
   cfg:  LlmConfig
+  persona: AdvisorPersona
+  personaCustom?: string | null
 }
 
 export type GenerateResult =
@@ -60,7 +62,10 @@ export async function generateAdvice(args: GenerateArgs): Promise<GenerateResult
   const data = await recentData(userId)
   if (data.length === 0) return { ok: false, reason: 'no_data' }
 
-  const messages = buildAdvicePrompt({ data, tgtW: args.tgtW, days: args.days })
+  const messages = buildAdvicePrompt({
+    data, tgtW: args.tgtW, days: args.days,
+    persona: args.persona, personaCustom: args.personaCustom,
+  })
 
   try {
     const result = await chat(messages, args.cfg)

@@ -1,6 +1,7 @@
 import type { DayData } from './data'
 import type { C } from './colors'
 import type { TdeeSource } from './forecast'
+import type { AdvisorPersona } from './advisor'
 
 export type Tab = 'home' | 'balance' | 'forecast' | 'settings'
 
@@ -20,6 +21,8 @@ export interface State {
   wOff:     number       // weight chart period offset (0 = latest)
   tRange:   number       // trajectory window: 7 | 30 | 90 | 0 (all)
   trajBasis: 'trend' | 'balance'   // trajectory prediction basis toggle
+  advisorPersona:       AdvisorPersona | null   // null = not chosen yet (server-persisted, see useSettings)
+  advisorPersonaCustom: string | null
 }
 
 export type Updater = (patch: Partial<State>) => void

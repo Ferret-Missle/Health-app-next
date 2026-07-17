@@ -1,10 +1,13 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { authFetch } from './authFetch'
+import type { AdvisorPersona } from './advisor'
 
 export interface GoalSettings {
   tgtW:    number
   tgtDate: string
   llm:     'groq' | 'byok'
+  advisorPersona:       AdvisorPersona | null
+  advisorPersonaCustom: string | null
 }
 
 /**
@@ -44,5 +47,5 @@ export function useSettings(
   useEffect(() => {
     if (!loaded.current) return
     save(current)
-  }, [current.tgtW, current.tgtDate, current.llm, save])
+  }, [current.tgtW, current.tgtDate, current.llm, current.advisorPersona, current.advisorPersonaCustom, save])
 }

@@ -3,6 +3,9 @@ import type { LlmConfig } from '@/lib/groq'
 import { estimateQuota, getCachedRpd } from '@/lib/quota'
 import { userGuard } from '@/lib/firebase-admin'
 import { generateAdvice, logAdvice } from '@/lib/advice-core'
+import type { AdvisorPersona } from '@/lib/advisor'
+
+const PERSONAS: AdvisorPersona[] = ['friend', 'trainer', 'strict', 'custom']
 
 export const dynamic = 'force-dynamic'
 // LLM generation can take a while; lift above the default function timeout.
@@ -18,20 +21,23 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ quota })
 }
 
-// POST: generate advice. Body: { tgtW, days, provider?, apiKey?, baseUrl?, model? }
+// POST: generate advice. Body: { tgtW, days, persona?, personaCustom?, provider?, apiKey?, baseUrl?, model? }
 export async function POST(req: NextRequest) {
   const auth = await userGuard(req)
   if (auth instanceof NextResponse) return auth
   const { uid } = auth
 
   const body = await req.json().catch(() => ({})) as {
-    tgtW?: number; days?: number
+    tgtW?: number; days?: number; persona?: string; personaCustom?: string
   } & LlmConfig
+
+  const persona = PERSONAS.includes(body.persona as AdvisorPersona) ? (body.persona as AdvisorPersona) : 'trainer'
 
   const result = await generateAdvice({
     userId: uid,
     tgtW: body.tgtW ?? 72,
     days: body.days ?? 90,
+    persona, personaCustom: body.personaCustom,
     cfg:  { provider: body.provider, apiKey: body.apiKey, baseUrl: body.baseUrl, model: body.model },
   })
 

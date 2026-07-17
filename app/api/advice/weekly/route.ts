@@ -3,6 +3,9 @@ import { sql } from '@/lib/db'
 import { userGuard } from '@/lib/firebase-admin'
 import { generateAdvice, logAdvice } from '@/lib/advice-core'
 import type { LlmConfig } from '@/lib/groq'
+import type { AdvisorPersona } from '@/lib/advisor'
+
+const PERSONAS: AdvisorPersona[] = ['friend', 'trainer', 'strict', 'custom']
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -22,15 +25,17 @@ function currentWeekStartJst(now = new Date()): string {
 }
 
 // POST: run the weekly advice if this week's hasn't run yet.
-// Body (optional): { tgtW, days, provider, apiKey, baseUrl, model }
+// Body (optional): { tgtW, days, persona, personaCustom, provider, apiKey, baseUrl, model }
 export async function POST(req: NextRequest) {
   const auth = await userGuard(req)
   if (auth instanceof NextResponse) return auth
   const { uid } = auth
 
   const body = await req.json().catch(() => ({})) as {
-    tgtW?: number; days?: number
+    tgtW?: number; days?: number; persona?: string; personaCustom?: string
   } & LlmConfig
+
+  const persona = PERSONAS.includes(body.persona as AdvisorPersona) ? (body.persona as AdvisorPersona) : 'trainer'
 
   const weekStart = currentWeekStartJst()
 
@@ -51,6 +56,7 @@ export async function POST(req: NextRequest) {
     userId: uid,
     tgtW: body.tgtW ?? 72,
     days: body.days ?? 90,
+    persona, personaCustom: body.personaCustom,
     cfg:  { provider: body.provider, apiKey: body.apiKey, baseUrl: body.baseUrl, model: body.model },
   })
 
