@@ -34,7 +34,12 @@ const HARD_RULES = `# 厳守事項（口調に関わらず必ず守る）
 // mistaking a logged surplus for real progress when the trend says
 // otherwise). Voice and output structure are NOT dictated here; each
 // persona in PERSONA_PROMPTS decides how to say this in its own way.
-const ANALYSIS_GUIDANCE = `# データの読み解き方
+// IMPORTANT: this is internal reasoning material, not a checklist to narrate
+// through — see OUTPUT_DISCIPLINE, which explicitly says not to report each
+// point. Models were observed walking through every bullet here verbatim
+// (restating every number, then repeating the same insight again in the
+// action list), producing bloated, redundant output.
+const ANALYSIS_GUIDANCE = `# データの読み解き方（内部判断用。逐一報告する項目リストではない）
 - 収支 d = 消費kcal − 摂取kcal。d>0(黒字)=減量に有利、d<0(赤字)=オーバー。「日次目標黒字」が達成基準。
 - 実測ペース(体重の実測トレンド、週あたり)と目標ペースの差が正なら「ペースが遅い」、負なら「先行」。
 - 収支が悪化した日が1日あっても、その日単体を繰り返し責めない。「挽回プラン」の数値（今週中に取り戻す場合の上乗せ量 / 残り期間全体で均す場合の上乗せ量）を使い、上乗せ量が現実的でなければ後者（期間全体で均す）を勧める。
@@ -43,6 +48,17 @@ const ANALYSIS_GUIDANCE = `# データの読み解き方
 - 摂取kcalが極端に低い日（1000kcal未満・未記録）は記録漏れの可能性が高く、「節制できた」と即断しない。
 - 体重は測定日が飛ぶ。数日の上下動はノイズなので、傾向（増/減/横ばい）で語る。
 - 栄養バランス（タンパク質目安との比較）・活動量（歩数目安との比較）もデータがあれば判断材料にする。`
+
+// Explicit anti-verbosity rule, placed last (closest to generation) since
+// models weight instructions near the end of a long prompt more heavily for
+// shaping the immediate output. Directly targets the observed failure mode:
+// narrating every ANALYSIS_GUIDANCE point with its raw numbers, then
+// repeating the same point again in the action list.
+const OUTPUT_DISCIPLINE = `# 結論ファースト・簡潔に（最重要）
+- 「データの読み解き方」の各項目を律儀に全部言葉にして報告しない。今週のデータで実際に特筆すべき点だけを取り上げる。特筆すべき点がない項目には触れない。
+- 数値を並べて経過や比較の過程を説明しない。結論を先に述べ、その根拠になった数値を1つだけ添える（例：「タンパク質が少し足りていないよ（67g、目安106g）」であって、目安と実測を両方並べて説明を続ける必要はない）。
+- 同じ指摘を複数箇所で繰り返さない（気づきで言った内容をアクションでもう一度説明しない）。
+- 全体を簡潔にまとめる。目安として全体で300〜400字程度。冗長な言い回し・前置きの言い換えを避ける。`
 
 // Persona voice + structure. Deliberately NOT constrained to a fixed
 // ①②③ shape — each persona decides its own output form.
@@ -70,7 +86,9 @@ function buildSystem(persona: AdvisorPersona, custom?: string | null): string {
 
 ${ANALYSIS_GUIDANCE}
 
-${HARD_RULES}`
+${HARD_RULES}
+
+${OUTPUT_DISCIPLINE}`
 }
 
 const r = (n: number) => Math.round(n)
