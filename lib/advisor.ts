@@ -94,14 +94,37 @@ ${OUTPUT_DISCIPLINE}`
 const r = (n: number) => Math.round(n)
 const r1 = (n: number) => Math.round(n * 10) / 10
 
+function isSameJstDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+/** Today (JST) as a Date matching the calendar-date construction rowsToDayData
+ *  uses for DayData.dt (see lib/data.ts), so same-day comparison works. */
+function todayJstDate(): Date {
+  const s = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const [yr, mon, dom] = s.split('-').map(Number)
+  return new Date(yr, mon - 1, dom)
+}
+
 /** Build the chat messages for an advice request. `ctx.data` should ideally
- *  span LONG_TERM_WINDOW_DAYS — the trend/TDEE/target-intake calculations
- *  below only ever use the trailing TDEE_WINDOW_DAYS of it (unchanged
- *  behavior), but the extra history lets the prompt contrast a long-term
- *  trend against the recent one. Degrades gracefully with less data. */
+ *  span LONG_TERM_WINDOW_DAYS and MAY include today. Today is intentionally
+ *  kept for the weight trend (so a same-day weigh-in isn't a day stale) but
+ *  excluded from every calorie-balance figure below (7-day table, TDEE
+ *  window, etc.) since today's food/activity log is normally still partial.
+ *  Degrades gracefully with less data. */
 export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
-  const last7 = ctx.data.slice(-7)
-  const tdeeWindowData = ctx.data.slice(-TDEE_WINDOW_DAYS)
+  const today = todayJstDate()
+  // Completed days only — everything calorie-balance-derived is computed from
+  // this, never from ctx.data directly, so a same-day partial log can't leak
+  // in as a false surplus/deficit or a false "logged" day.
+  const completedData = ctx.data.filter(d => !isSameJstDay(d.dt, today))
+
+  const last7 = completedData.slice(-7)
+  const calorieWindowData = completedData.slice(-TDEE_WINDOW_DAYS)
+  // Includes today (if present) — weight isn't subject to the same
+  // partial-day noise as calorie balance, so the trend should use the
+  // freshest available weigh-in.
+  const weightWindowData = ctx.data.slice(-TDEE_WINDOW_DAYS)
 
   // Weekly aggregates (7-day detail table / diary review — unrelated to the
   // TDEE_WINDOW_DAYS window used for the trend/TDEE calc below).
@@ -113,18 +136,19 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
   // — never against self-reported balance) drives the trajectory pace
   // comparison and the adaptive-TDEE-based target intake, same as before
   // ctx.data was widened to LONG_TERM_WINDOW_DAYS. See lib/forecast.ts.
-  const recentTrend = estimateWeightTrend(tdeeWindowData)
+  const recentTrend = estimateWeightTrend(weightWindowData)
   const curW   = recentTrend.latestSmoothed
-  const tdee   = estimateAdaptiveTdee(tdeeWindowData, recentTrend)
-  const avgBurnWindow = tdeeWindowData.length ? tdeeWindowData.reduce((s, x) => s + x.burn, 0) / tdeeWindowData.length : 0
+  const tdee   = estimateAdaptiveTdee(calorieWindowData, recentTrend)
+  const avgBurnWindow = calorieWindowData.length ? calorieWindowData.reduce((s, x) => s + x.burn, 0) / calorieWindowData.length : 0
   const { dailyTargetSurplus: dailyTarget, targetIntake, avgTdee, tdeeSource } =
     computeDailyTarget({ curW, tgtW: ctx.tgtW, daysLeft: ctx.days, tdee, avgBurnFallback: avgBurnWindow })
   const { onTrack, requiredPacePerDay, actualPacePerDay } =
     evaluateOnTrack({ curW, tgtW: ctx.tgtW, daysLeft: ctx.days, trend: recentTrend })
 
-  // Long-term trend: the full fetched window (up to LONG_TERM_WINDOW_DAYS),
-  // used only for the long-vs-recent contrast below — never feeds into the
-  // target-intake/TDEE numbers above, so existing calculations are unaffected.
+  // Long-term trend: the full fetched window (up to LONG_TERM_WINDOW_DAYS,
+  // today included), used only for the long-vs-recent contrast below — never
+  // feeds into the target-intake/TDEE numbers above, so existing calculations
+  // are unaffected.
   const longTrend = estimateWeightTrend(ctx.data)
   const longTermLine = longTrend.n >= 10 && longTrend.spanDays >= 21
     ? `長期ペース(過去${r(longTrend.spanDays)}日間の傾向): 週あたり${r1(longTrend.slopePerDay * 7)}kg`
@@ -137,7 +161,7 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
   // sides, so differing logging-gap rates don't skew the comparison.
   const loggedDays7   = last7.filter(x => x.intake > 0)
   const avgIntakeLogged7 = loggedDays7.length ? loggedDays7.reduce((s, x) => s + x.intake, 0) / loggedDays7.length : 0
-  const priorWindow    = ctx.data.slice(-28, -7)
+  const priorWindow    = completedData.slice(-28, -7)
   const priorLogged    = priorWindow.filter(x => x.intake > 0)
   const avgIntakePrior = priorLogged.length ? priorLogged.reduce((s, x) => s + x.intake, 0) / priorLogged.length : 0
   const intakeShiftLine = priorLogged.length >= 7 && loggedDays7.length >= 3
