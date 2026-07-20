@@ -20,15 +20,13 @@ export type GenerateResult =
   | { ok: true;  advice: string; quota: QuotaEstimate; promptTokens: number; compTokens: number }
   | { ok: false; reason: 'quota_exhausted' | 'no_data' | 'rate_limited' | 'llm_error'; quota?: QuotaEstimate; message?: string }
 
-/** Today's JST calendar date as 'YYYY-MM-DD'. */
-function todayJst(): string {
-  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
-}
-
 async function recentData(userId: string, days = LONG_TERM_WINDOW_DAYS) {
-  // Exclude today (JST): the current day's food log is usually incomplete, so it
-  // shows up as an outlier (near-zero intake). Advice should look at completed
-  // days only. We fetch one extra day and drop today to keep `days` full.
+  // Includes today (JST) if a row exists — e.g. today's weigh-in — so the
+  // weight trend the advisor references isn't stuck a day stale. Today's food
+  // log is usually incomplete though (near-zero/partial intake), so
+  // buildAdvicePrompt (lib/advisor.ts) separately excludes today from every
+  // calorie-balance-derived figure (7-day table, TDEE window, etc.) while
+  // still using it for the weight trend.
   const rows = await sql`
     SELECT date::text AS date,
            burn_kcal, steps, heart_rate_avg, sleep_min,
@@ -36,7 +34,7 @@ async function recentData(userId: string, days = LONG_TERM_WINDOW_DAYS) {
            intake_kcal, p_g, f_g, c_g, foods
     FROM (
       SELECT * FROM daily_data
-      WHERE user_id = ${userId} AND date < ${todayJst()}::date
+      WHERE user_id = ${userId}
       ORDER BY date DESC LIMIT ${days}
     ) recent
     ORDER BY date ASC
