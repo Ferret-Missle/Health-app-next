@@ -40,6 +40,14 @@ export async function getGoogleAccessToken(userId: string): Promise<string> {
 
   if (!res.ok) {
     const text = await res.text()
+    // invalid_grant = the refresh token is dead (revoked, or the 7-day expiry of an
+    // OAuth consent screen left in "Testing"). Retrying can never succeed, so drop
+    // the row: /api/auth/status then reports Google as unlinked and the UI offers
+    // re-linking instead of failing every sync with a stale "linked" state.
+    if (text.includes('invalid_grant')) {
+      await sql`DELETE FROM oauth_tokens WHERE user_id = ${userId} AND provider = 'google'`
+      throw new Error('Google連携の有効期限が切れました — 設定から再連携してください')
+    }
     throw new Error(`Token refresh failed (${res.status}): ${text}`)
   }
 

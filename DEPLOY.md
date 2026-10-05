@@ -62,6 +62,13 @@ Vercel の **New Project → Import** でこのリポジトリを選ぶ。Root D
 - 承認済みリダイレクトURIに **`https://<your-app>.vercel.app/api/auth/google/callback`** を追加
 - OAuth同意画面を **「公開 (本番)」に切り替え** → これで refresh token の7日失効が解消
   （審査が要る場合あり。個人利用なら test ユーザー継続でも可だが7日再連携が必要なまま）
+  - 手順: Google Cloud Console → APIとサービス → OAuth同意画面（Google Auth Platform → 対象）→
+    公開ステータスが「テスト」なら **「アプリを公開」** を押して「本番環境」にする
+  - 使用スコープ (`googlehealth.*.readonly`) が機密/制限付きスコープの場合、未検証アプリ警告が出るが
+    本人利用なら「詳細 → 安全でないページに移動」で承認すれば refresh token は失効しない
+  - 公開後は **一度だけ設定画面から Google を再連携** する（テスト中に発行された refresh token は
+    7日制限が付いたままのため）
+  - 失効した場合は同期時に `invalid_grant` を検知して連携を解除扱いにし、UI から再連携を促す
 
 ### FatSecret
 - ダッシュボードの IP allowlist に **Vercel の出力IP** を登録する必要がある。
