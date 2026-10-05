@@ -139,6 +139,13 @@ export default function AuthGate({ children }: { children: ReactNode }) {
               続けるには Google でサインインしてください。
             </div>
           </div>
+          {/* Public description of the app + policy links: Google's OAuth consent
+              screen requires the homepage to explain the app and link the privacy policy. */}
+          <div style={{ fontSize: 12, color: '#52635c', lineHeight: '19px' }}>
+            Google Health の歩数・消費カロリー・体重などと FatSecret の食事記録から、
+            カロリー収支の可視化・体重推移の予測・AI アドバイスを提供する個人向け健康管理アプリです。
+            Google の健康データは読み取り専用で取得し、利用者本人への機能提供にのみ使用します。
+          </div>
           {inApp && <InAppBrowserNotice />}
           <button type="button" onClick={signIn} style={{
             width: '100%', height: 48, border: '1px solid #c4cfc8', borderRadius: 999,
@@ -152,6 +159,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
           {error && (
             <div style={{ fontSize: 12, color: '#b3261e', lineHeight: '17px' }}>{error}</div>
           )}
+          <div style={{ fontSize: 12, color: '#52635c', display: 'flex', gap: 14 }}>
+            <a href="/privacy" style={{ color: '#175C49', textDecoration: 'underline' }}>プライバシーポリシー</a>
+            <a href="/terms" style={{ color: '#175C49', textDecoration: 'underline' }}>利用規約</a>
+          </div>
         </div>
       </Centered>
     )
