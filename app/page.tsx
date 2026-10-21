@@ -51,7 +51,7 @@ function AppInner() {
     advisorPersona: null, advisorPersonaCustom: null,
   })
 
-  const { data: DATA, syncing, progress, lastSynced, sync } = useHealthData()
+  const { data: DATA, syncing, progress, lastSynced, error: syncError, sync } = useHealthData()
   const { user, logout } = useAuth()
   const link = useLinkStatus()
   const [settingsLoaded, setSettingsLoaded] = useState(false)
@@ -61,6 +61,13 @@ function AppInner() {
   // without this the user returns to the app with no idea it failed (or why).
   const [linkNotice, setLinkNotice] = useState<{ ok: boolean; text: string } | null>(null)
   const justLinkedRef = useRef(false)   // returned from a successful link → full sync
+  // Sync problems reported by the sync route (provider failures, or Google
+  // returning 0 days) — shown in the same banner so they aren't silent.
+  const [dismissedSyncError, setDismissedSyncError] = useState<string | null>(null)
+  const notice = linkNotice
+    ?? (syncError && syncError !== dismissedSyncError
+      ? { ok: false, text: `同期に問題があります: ${syncError}` }
+      : null)
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
     let n: { ok: boolean; text: string } | null = null
@@ -244,19 +251,19 @@ function AppInner() {
             </button>
           </div>
 
-          {/* OAuth link result banner (success / failure with the reason). */}
-          {linkNotice && (
+          {/* OAuth link result / sync problem banner (success / failure with the reason). */}
+          {notice && (
             <div style={{
               flex: 'none', display: 'flex', alignItems: 'flex-start', gap: 8,
               padding: '10px 14px', zIndex: 5,
-              background: linkNotice.ok ? c.onTrackC : c.offTrackC,
-              color: linkNotice.ok ? c.onTrack : c.offTrack,
+              background: notice.ok ? c.onTrackC : c.offTrackC,
+              color: notice.ok ? c.onTrack : c.offTrack,
             }}>
               <span className="ms" style={{ fontSize: 18, flex: 'none', marginTop: 1 }}>
-                {linkNotice.ok ? 'check_circle' : 'error'}
+                {notice.ok ? 'check_circle' : 'error'}
               </span>
-              <span style={{ flex: 1, fontSize: 12.5, lineHeight: '18px', wordBreak: 'break-word' }}>{linkNotice.text}</span>
-              <button type="button" onClick={() => setLinkNotice(null)} aria-label="閉じる" style={{
+              <span style={{ flex: 1, fontSize: 12.5, lineHeight: '18px', wordBreak: 'break-word' }}>{notice.text}</span>
+              <button type="button" onClick={() => (linkNotice ? setLinkNotice(null) : setDismissedSyncError(syncError))} aria-label="閉じる" style={{
                 flex: 'none', border: 'none', background: 'none', cursor: 'pointer',
                 color: 'inherit', display: 'inline-flex', padding: 0,
               }}>
