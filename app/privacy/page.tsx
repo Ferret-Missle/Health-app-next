@@ -58,7 +58,7 @@ export default function PrivacyPage() {
         <li>ホスティング: Vercel</li>
         <li>データベース: Neon</li>
         <li>
-          AI アドバイス生成: Groq。アドバイス生成のため、日別の体重・摂取・消費・歩数などの集計値を送信します。
+          AI アドバイス生成: Google Gemini API。アドバイス生成のため、日別の体重・摂取・消費・歩数などの集計値を送信します。
           メールアドレス等の個人を直接特定する情報は送信しません。
         </li>
       </ul>

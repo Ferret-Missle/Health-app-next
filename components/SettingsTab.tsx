@@ -240,7 +240,7 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, latestRawWeight
 
         <div style={{ fontSize: 13, color: c.onSurfVar, marginBottom: 10 }}>プロバイダ</div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button type="button" onClick={() => set({ llm: 'groq' })} style={llmBtnSt(s.llm === 'groq')}>Groq(無料)</button>
+          <button type="button" onClick={() => set({ llm: 'groq' })} style={llmBtnSt(s.llm === 'groq')}>Gemini(無料)</button>
           <button type="button" onClick={() => set({ llm: 'byok' })} style={llmBtnSt(s.llm === 'byok')}>BYOK</button>
         </div>
         {s.llm === 'byok' && (
@@ -269,7 +269,7 @@ export default function SettingsTab({ s, set, c, daysLeft, curW, latestRawWeight
               )}
             </div>
             <div style={{ fontSize: 10.5, color: c.onSurfVar, opacity: .8, lineHeight: '15px' }}>
-              キーはこの端末内(ブラウザ)にのみ保存され、サーバーDBには保存されません。Groq互換のOpenAI形式エンドポイントを使用します。
+              キーはこの端末内(ブラウザ)にのみ保存され、サーバーDBには保存されません。OpenAI互換のエンドポイントを使用します。
             </div>
           </div>
         )}
