@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { getGoogleAccessToken } from '@/lib/google-auth'
-import { fetchActivityData, fetchBodyData } from '@/lib/google-health'
+import { fetchActivityData, fetchBodyData, probeStepsRollup } from '@/lib/google-health'
 import { fetchIntakeData } from '@/lib/fatsecret'
 import { sql } from '@/lib/db'
 import { userGuard } from '@/lib/firebase-admin'
@@ -54,6 +54,11 @@ export async function POST(req: NextRequest) {
         accessToken = await getGoogleAccessToken(uid)
         progress(1, '活動データ(消費・歩数・心拍・睡眠)を取得中…')
         activityData = await fetchActivityData(accessToken, startMs, endMs, errors)
+        // No failures but no days either: show Google's raw reply so "connected,
+        // nothing synced" can be told apart from a parsing/window problem.
+        if (activityData.length === 0 && errors.length === 0) {
+          errors.push(`google: 直近${days}日の活動データが0件でした (${await probeStepsRollup(accessToken, startMs, endMs)})`)
+        }
       } catch (e) {
         errors.push(`google: ${e instanceof Error ? e.message : String(e)}`)
       }

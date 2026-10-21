@@ -105,6 +105,25 @@ async function dailyRollUp(
   return chunks.flat()
 }
 
+// One-off probe for diagnosing "synced but 0 days": returns Google's raw answer
+// for a steps rollup over the same window, so the UI can show whether Google
+// replied with an empty body (no data for this account) or something else.
+export async function probeStepsRollup(
+  accessToken: string,
+  startMs: number,
+  endMs: number,
+): Promise<string> {
+  const res = await fetch(`${HEALTH_API}/users/me/dataTypes/steps/dataPoints:dailyRollUp`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      range: { start: jstCivil(startMs), end: jstCivil(Math.min(endMs, startMs + MAX_ROLLUP_DAYS * DAY_MS)) },
+      windowSizeDays: 1,
+    }),
+  })
+  return `steps応答 ${res.status}: ${(await res.text()).replace(/\s+/g, ' ').slice(0, 200)}`
+}
+
 // ── sleep via list ───────────────────────────────────────────────────────────
 interface SleepStage { startTime: string; endTime: string; type: string }
 interface SleepDataPoint { sleep?: { interval?: { startTime?: string; endTime?: string }; stages?: SleepStage[] } }
