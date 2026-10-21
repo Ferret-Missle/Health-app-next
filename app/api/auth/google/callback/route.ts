@@ -45,7 +45,15 @@ export async function GET(req: NextRequest) {
   })
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(`${base}/?auth_error=token_exchange`)
+    // Surface Google's reason (e.g. invalid_client / redirect_uri_mismatch /
+    // invalid_grant) instead of a bare "token_exchange" — it's a short, non-secret
+    // error code, and without it a misconfigured client secret or redirect URI
+    // is indistinguishable from a used/expired code.
+    const detail = await tokenRes.json().catch(() => null) as
+      { error?: string; error_description?: string } | null
+    const reason = [detail?.error, detail?.error_description].filter(Boolean).join(': ') || `HTTP ${tokenRes.status}`
+    console.error('Google token exchange failed', tokenRes.status, reason)
+    return NextResponse.redirect(`${base}/?auth_error=${encodeURIComponent(`token_exchange (${reason})`)}`)
   }
 
   const tokens = await tokenRes.json() as TokenResponse
