@@ -1,5 +1,7 @@
-// Provider-agnostic LLM adapter (FR-4.3). Default = Groq free tier; BYOK lets
-// the user point at any OpenAI-compatible /chat/completions endpoint.
+// Provider-agnostic LLM adapter (FR-4.3). Default = Gemini free tier (Google AI
+// Studio, OpenAI-compatible endpoint); BYOK lets the user point at any
+// OpenAI-compatible /chat/completions endpoint.
+// Groq の llama-3.3-70b-versatile は 2026-08-16 に廃止されたため既定を変更した。
 
 export interface LlmMessage {
   role:    'system' | 'user' | 'assistant'
@@ -22,13 +24,13 @@ export interface LlmResult {
 
 export interface LlmConfig {
   provider?: 'groq' | 'byok'
-  apiKey?:   string   // BYOK key; falls back to GROQ_API_KEY for groq
-  baseUrl?:  string   // BYOK endpoint; defaults to Groq
+  apiKey?:   string   // BYOK key; falls back to GEMINI_API_KEY for the default provider
+  baseUrl?:  string   // BYOK endpoint; defaults to Gemini
   model?:    string
 }
 
-const GROQ_BASE  = 'https://api.groq.com/openai/v1'
-const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'
+const DEFAULT_BASE  = 'https://generativelanguage.googleapis.com/v1beta/openai'
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
 const toInt = (v: string | null): number | null => {
   if (v == null) return null
@@ -38,11 +40,11 @@ const toInt = (v: string | null): number | null => {
 
 export async function chat(messages: LlmMessage[], cfg: LlmConfig = {}): Promise<LlmResult> {
   const isByok  = cfg.provider === 'byok'
-  const baseUrl = isByok ? (cfg.baseUrl || GROQ_BASE) : GROQ_BASE
-  const apiKey  = cfg.apiKey || process.env.GROQ_API_KEY
-  const model   = cfg.model || GROQ_MODEL
+  const baseUrl = isByok ? (cfg.baseUrl || DEFAULT_BASE) : DEFAULT_BASE
+  const apiKey  = cfg.apiKey || process.env.GEMINI_API_KEY
+  const model   = cfg.model || DEFAULT_MODEL
 
-  if (!apiKey) throw new Error('LLM API key missing (set GROQ_API_KEY or supply a BYOK key)')
+  if (!apiKey) throw new Error('LLM API key missing (set GEMINI_API_KEY or supply a BYOK key)')
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method:  'POST',
@@ -57,6 +59,9 @@ export async function chat(messages: LlmMessage[], cfg: LlmConfig = {}): Promise
       // stable advice rather than a different angle each run.
       temperature: 0.2,
       max_tokens:  700,
+      // Gemini 2.5 Flash は思考トークンが max_tokens を消費し本文が空になり得るため、
+      // 既定プロバイダーでは思考を無効化する。BYOK 先が未知の API の場合は送らない。
+      ...(isByok ? {} : { reasoning_effort: 'none' }),
     }),
   })
 

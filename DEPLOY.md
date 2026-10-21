@@ -37,8 +37,8 @@ Vercel の **New Project → Import** でこのリポジトリを選ぶ。Root D
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth | |
 | `GOOGLE_REDIRECT_URI` | Google コールバック | **`https://<your-app>.vercel.app/api/auth/google/callback`**。Console登録値と完全一致必須 |
 | `FATSECRET_CONSUMER_KEY` / `FATSECRET_CONSUMER_SECRET` | FatSecret OAuth1 | |
-| `GROQ_API_KEY` | LLM (Groq) | |
-| `GROQ_MODEL` / `GROQ_TPD_LIMIT` / `GROQ_BOOTSTRAP_TOKENS` | LLM 調整 | 任意。未設定で既定値 |
+| `GEMINI_API_KEY` | LLM (Gemini 無料枠 / Google AI Studio) | 旧 `GROQ_API_KEY` からの移行で新規登録 |
+| `GEMINI_MODEL` / `GROQ_TPD_LIMIT` / `GROQ_BOOTSTRAP_TOKENS` | LLM 調整 | 任意。未設定で既定値（`GEMINI_MODEL` 既定 `gemini-2.5-flash`） |
 | `TOKEN_ENCRYPTION_KEY` | トークン暗号化鍵 | **ローカルと同じ値**にしないと既存暗号化行を復号できない |
 | `FIREBASE_SERVICE_ACCOUNT` | Admin SDK 鍵JSON | サービスアカウントJSONの中身まるごと。`private_key`の改行はコード側で復元 |
 | `ALLOWED_EMAILS` | 許可するユーザのGmail（カンマ区切り） | 例 `me@gmail.com, wife@gmail.com`。ここに無いアカウントは403。`email_verified` 必須 |
