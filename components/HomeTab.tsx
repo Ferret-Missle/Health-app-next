@@ -198,7 +198,7 @@ export default function HomeTab({ s, set, c, data, daysLeft, dailyTarget, curW, 
                     : byokMissing
                       ? '設定でBYOKのAPIキーを入力すると、アドバイスを生成できます。'
                       : exhausted
-                        ? '本日のGroq無料クォータを使い切りました。深夜にリセットされます。設定からBYOK(自分のAPIキー)に切り替えるとすぐ利用できます。'
+                        ? '本日のGemini無料クォータを使い切りました。深夜にリセットされます。設定からBYOK(自分のAPIキー)に切り替えるとすぐ利用できます。'
                         : '直近1週間の食事・運動・体重の予実乖離をもとに、改善ポイントを提案します。'}
             </div>
           </div>
