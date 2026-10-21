@@ -15,6 +15,22 @@ const JST_OFFSET_SECONDS = 9 * 3600
 const MAX_ROLLUP_DAYS = 14
 const DAY_MS = 86400000
 
+// Promise.allSettled swallows rejections, which made a disabled API / missing
+// scope look like "synced, 0 days". Collect them (trimmed — Google's error body
+// can be long) so the sync route can show why a data type came back empty.
+function collectFailures(
+  results: PromiseSettledResult<unknown>[],
+  labels: string[],
+  failures: string[],
+): void {
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      const msg = r.reason instanceof Error ? r.reason.message : String(r.reason)
+      failures.push(`${labels[i]}: ${msg.slice(0, 300)}`)
+    }
+  })
+}
+
 // ── CivilDateTime: { date:{year,month,day}, time:{hours,...} }, NO timezone ──
 interface CivilDate { year: number; month: number; day: number }
 interface CivilDateTime { date: CivilDate; time?: { hours?: number; minutes?: number; seconds?: number; nanos?: number } }
@@ -153,6 +169,7 @@ export async function fetchActivityData(
   accessToken: string,
   startMs: number,
   endMs: number,
+  failures: string[] = [],
 ): Promise<DailyActivityData[]> {
   const [stepsRes, calRes, hrRes, sleepRes] = await Promise.allSettled([
     dailyRollUp(accessToken, 'steps',          startMs, endMs),
@@ -160,6 +177,7 @@ export async function fetchActivityData(
     dailyRollUp(accessToken, 'heart-rate',     startMs, endMs),
     fetchSleepMinutesByDate(accessToken, startMs, endMs),
   ])
+  collectFailures([stepsRes, calRes, hrRes, sleepRes], ['steps', 'total-calories', 'heart-rate', 'sleep'], failures)
 
   const steps    = stepsRes.status === 'fulfilled' ? stepsRes.value : []
   const calories = calRes.status   === 'fulfilled' ? calRes.value   : []
@@ -208,11 +226,13 @@ export async function fetchBodyData(
   accessToken: string,
   startMs: number,
   endMs: number,
+  failures: string[] = [],
 ): Promise<DailyBodyData[]> {
   const [weightRes, bfRes] = await Promise.allSettled([
     dailyRollUp(accessToken, 'weight',   startMs, endMs),
     dailyRollUp(accessToken, 'body-fat', startMs, endMs),
   ])
+  collectFailures([weightRes, bfRes], ['weight', 'body-fat'], failures)
 
   const weights = weightRes.status === 'fulfilled' ? weightRes.value : []
   const bfPcts  = bfRes.status     === 'fulfilled' ? bfRes.value     : []
