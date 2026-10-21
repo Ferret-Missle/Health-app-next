@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       try {
         accessToken = await getGoogleAccessToken(uid)
         progress(1, '活動データ(消費・歩数・心拍・睡眠)を取得中…')
-        activityData = await fetchActivityData(accessToken, startMs, endMs)
+        activityData = await fetchActivityData(accessToken, startMs, endMs, errors)
       } catch (e) {
         errors.push(`google: ${e instanceof Error ? e.message : String(e)}`)
       }
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       progress(2, '体重・体脂肪を取得中…')
       if (accessToken) {
         try {
-          bodyData = await fetchBodyData(accessToken, startMs, endMs)
+          bodyData = await fetchBodyData(accessToken, startMs, endMs, errors)
         } catch (e) {
           errors.push(`google-body: ${e instanceof Error ? e.message : String(e)}`)
         }
