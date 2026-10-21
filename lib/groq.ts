@@ -30,7 +30,10 @@ export interface LlmConfig {
 }
 
 const DEFAULT_BASE  = 'https://generativelanguage.googleapis.com/v1beta/openai'
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
+// 既定経路は思考トークンも max_tokens を消費するため、BYOK より大きく取る。
+const BYOK_MAX_TOKENS    = 700
+const DEFAULT_MAX_TOKENS = 2048
 
 const toInt = (v: string | null): number | null => {
   if (v == null) return null
@@ -58,10 +61,10 @@ export async function chat(messages: LlmMessage[], cfg: LlmConfig = {}): Promise
       // Low temperature for consistency: the same week's data should yield
       // stable advice rather than a different angle each run.
       temperature: 0.2,
-      max_tokens:  700,
-      // Gemini 2.5 Flash は思考トークンが max_tokens を消費し本文が空になり得るため、
-      // 既定プロバイダーでは思考を無効化する。BYOK 先が未知の API の場合は送らない。
-      ...(isByok ? {} : { reasoning_effort: 'none' }),
+      max_tokens:  isByok ? BYOK_MAX_TOKENS : DEFAULT_MAX_TOKENS,
+      // Gemini 3 は思考を完全に無効化できず、'minimal' はエラーになるため 'low' を指定する。
+      // BYOK 先が未知の API の場合は送らない。
+      ...(isByok ? {} : { reasoning_effort: 'low' }),
     }),
   })
 
