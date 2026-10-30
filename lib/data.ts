@@ -6,8 +6,9 @@ export interface DayData {
   yr: number;
   dow: number;
   burn: number;
-  intake: number;
-  d: number;     // balance = burn - intake
+  intake: number;      // as-logged intake (0 = not logged)
+  intakeEst?: number;  // provisional intake used for `d` when this day was not logged (past-2-month logged average)
+  d: number;     // balance = burn - (intake, or intakeEst when unlogged)
   w: number;     // weight kg
   bf: number;    // body fat %
   p: number;     // protein g
@@ -70,6 +71,9 @@ export interface DailyRow {
   foods?:         string | null;
 }
 
+/** Lookback (days) for the provisional intake of unlogged days. */
+const IMPUTE_WINDOW_DAYS = 60;
+
 const num = (v: number | string | null | undefined): number => {
   const n = typeof v === 'string' ? parseFloat(v) : v;
   return n == null || Number.isNaN(n) ? 0 : n;
@@ -82,13 +86,30 @@ const num = (v: number | string | null | undefined): number => {
  */
 export function rowsToDayData(rows: DailyRow[]): DayData[] {
   let cum = 0;
-  return rows.map(r => {
+  const todayJst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const ts = rows.map(r => Date.parse(`${r.date}T00:00:00Z`));
+  const kcal = rows.map(r => num(r.intake_kcal));
+  // Unlogged past days would otherwise look like a 0-kcal day (falsely large
+  // surplus). Use the mean of logged days in the preceding 2 months instead;
+  // fall back to the mean of all logged days when nothing precedes.
+  const loggedAll = kcal.filter(v => v > 0);
+  const overall = loggedAll.length ? loggedAll.reduce((a, b) => a + b, 0) / loggedAll.length : 0;
+  const provisional = (i: number): number => {
+    let sum = 0, n = 0;
+    for (let j = i - 1; j >= 0 && ts[i] - ts[j] <= IMPUTE_WINDOW_DAYS * 86400000; j--) {
+      if (kcal[j] > 0) { sum += kcal[j]; n++; }
+    }
+    return n ? Math.round(sum / n) : Math.round(overall);
+  };
+  return rows.map((r, i) => {
     // 'YYYY-MM-DD' -> local Date at midnight (treat the string as the calendar date)
     const [yr, mon, dom] = r.date.split('-').map(Number);
     const dt = new Date(yr, mon - 1, dom);
     const burn   = num(r.burn_kcal);
-    const intake = num(r.intake_kcal);
-    const d      = burn - intake;
+    const intake = kcal[i];
+    // Today is still in progress, so it is left as-is.
+    const intakeEst = intake > 0 || burn <= 0 || r.date >= todayJst ? 0 : provisional(i);
+    const d      = burn - (intakeEst > 0 ? intakeEst : intake);
     cum += d;
     return {
       dt,
@@ -99,6 +120,7 @@ export function rowsToDayData(rows: DailyRow[]): DayData[] {
       dow: dt.getDay(),
       burn,
       intake,
+      ...(intakeEst > 0 ? { intakeEst } : {}),
       d,
       w:  num(r.weight_kg),
       bf: num(r.body_fat_pct),

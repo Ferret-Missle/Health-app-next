@@ -130,7 +130,7 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
   // TDEE_WINDOW_DAYS window used for the trend/TDEE calc below).
   const sumD      = last7.reduce((a, b) => a + b.d, 0)
   const avgBurn7  = last7.length ? last7.reduce((a, b) => a + b.burn, 0) / last7.length : 0
-  const avgIntake = last7.length ? last7.reduce((a, b) => a + b.intake, 0) / last7.length : 0
+  const avgIntake = last7.length ? last7.reduce((a, b) => a + (b.intakeEst ?? b.intake), 0) / last7.length : 0
 
   // Recent weight trend (outlier-cleaned, EWMA-smoothed, weight-vs-time only
   // — never against self-reported balance) drives the trajectory pace
@@ -175,7 +175,7 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
     const pfc = `P${r(d.p)}/F${r(d.f)}/C${r(d.cc)}g`
     const wt  = d.w > 0 ? `${r1(d.w)}kg` : '—'
     // Flag missing intake so the model treats it as a logging gap, not a fast.
-    const intakeTxt = d.intake > 0 ? `${r(d.intake)}` : '未記録'
+    const intakeTxt = d.intake > 0 ? `${r(d.intake)}` : d.intakeEst ? `未記録(仮値${r(d.intakeEst)})` : '未記録'
     const sleepTxt  = d.sleep ? ` 睡眠${r(d.sleep)}分` : ''
     const stepsTxt  = d.steps ? ` 歩数${r(d.steps)}` : ''
     const foodsTxt  = d.foods ? ` 食事[${d.foods}]` : ''
