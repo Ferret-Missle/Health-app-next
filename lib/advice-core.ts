@@ -77,10 +77,13 @@ export async function generateAdvice(args: GenerateArgs): Promise<GenerateResult
   } catch (e) {
     const err = e as Error & { status?: number; rateLimit?: import('./groq').RateLimit }
     if (err.rateLimit) cacheRpd(userId, err.rateLimit)
+    console.error('[advice] LLM request failed:', err.message)
     return {
       ok: false,
       reason: err.status === 429 ? 'rate_limited' : 'llm_error',
-      message: err.message,
+      message: err.status && err.status >= 500
+        ? 'AIサービスが混み合っています。しばらく待ってからもう一度お試しください。'
+        : err.message,
     }
   }
 }

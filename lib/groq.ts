@@ -41,6 +41,22 @@ const toInt = (v: string | null): number | null => {
   return Number.isNaN(n) ? null : n
 }
 
+// 一時的な過負荷 (503: high demand 等) は数秒で解消することが多いため自動リトライする。
+// route の maxDuration (60s) に収まるよう、待機は合計 ~7s に抑える。
+const RETRY_STATUSES   = new Set([500, 502, 503, 504])
+const MAX_ATTEMPTS     = 4
+const RETRY_BASE_MS    = 1000
+const RETRY_MAX_WAIT_MS = 5000
+
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
+/** Retry-After (秒) があればそれを、無ければ指数バックオフ (1s, 2s, 4s) を返す。 */
+function retryDelay(res: Response, attempt: number): number {
+  const ra = Number(res.headers.get('retry-after'))
+  const ms = Number.isFinite(ra) && ra > 0 ? ra * 1000 : RETRY_BASE_MS * 2 ** attempt
+  return Math.min(ms, RETRY_MAX_WAIT_MS)
+}
+
 export async function chat(messages: LlmMessage[], cfg: LlmConfig = {}): Promise<LlmResult> {
   const isByok  = cfg.provider === 'byok'
   const baseUrl = isByok ? (cfg.baseUrl || DEFAULT_BASE) : DEFAULT_BASE
@@ -49,7 +65,7 @@ export async function chat(messages: LlmMessage[], cfg: LlmConfig = {}): Promise
 
   if (!apiKey) throw new Error('LLM API key missing (set GEMINI_API_KEY or supply a BYOK key)')
 
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const init: RequestInit = {
     method:  'POST',
     headers: {
       'Content-Type':  'application/json',
@@ -66,7 +82,14 @@ export async function chat(messages: LlmMessage[], cfg: LlmConfig = {}): Promise
       // BYOK 先が未知の API の場合は送らない。
       ...(isByok ? {} : { reasoning_effort: 'low' }),
     }),
-  })
+  }
+
+  let res = await fetch(`${baseUrl}/chat/completions`, init)
+  for (let attempt = 0; attempt < MAX_ATTEMPTS - 1 && RETRY_STATUSES.has(res.status); attempt++) {
+    await res.text().catch(() => '')  // 接続を解放
+    await sleep(retryDelay(res, attempt))
+    res = await fetch(`${baseUrl}/chat/completions`, init)
+  }
 
   const rateLimit: RateLimit = {
     remainingRequests: toInt(res.headers.get('x-ratelimit-remaining-requests')),
