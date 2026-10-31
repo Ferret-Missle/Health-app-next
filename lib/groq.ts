@@ -42,17 +42,21 @@ const toInt = (v: string | null): number | null => {
 }
 
 // 一時的な過負荷 (503: high demand 等) は数秒で解消することが多いため自動リトライする。
-// route の maxDuration (60s) に収まるよう、待機は合計 ~7s に抑える。
-const RETRY_STATUSES   = new Set([500, 502, 503, 504])
-const MAX_ATTEMPTS     = 4
-const RETRY_BASE_MS    = 1000
+// route の maxDuration (60s) を超えると Vercel が非JSONのエラーページを返してしまうため、
+// 全体の時間予算 (TOTAL_BUDGET_MS) を設け、超えそうなら自前でエラーを投げて JSON で返す。
+const RETRY_STATUSES    = new Set([500, 502, 503, 504])
+const MAX_ATTEMPTS      = 4
+const RETRY_BASE_MS     = 1000
 const RETRY_MAX_WAIT_MS = 5000
+const TOTAL_BUDGET_MS   = 45_000   // DB 取得など LLM 以外の処理を差し引いた上限
+const ATTEMPT_TIMEOUT_MS = 25_000  // 1 回の試行の上限
+const MIN_ATTEMPT_MS    = 8_000    // これ未満しか残っていなければ再試行しない
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
 /** Retry-After (秒) があればそれを、無ければ指数バックオフ (1s, 2s, 4s) を返す。 */
-function retryDelay(res: Response, attempt: number): number {
-  const ra = Number(res.headers.get('retry-after'))
+function retryDelay(res: Response | null, attempt: number): number {
+  const ra = Number(res?.headers.get('retry-after'))
   const ms = Number.isFinite(ra) && ra > 0 ? ra * 1000 : RETRY_BASE_MS * 2 ** attempt
   return Math.min(ms, RETRY_MAX_WAIT_MS)
 }
@@ -84,11 +88,33 @@ export async function chat(messages: LlmMessage[], cfg: LlmConfig = {}): Promise
     }),
   }
 
-  let res = await fetch(`${baseUrl}/chat/completions`, init)
-  for (let attempt = 0; attempt < MAX_ATTEMPTS - 1 && RETRY_STATUSES.has(res.status); attempt++) {
-    await res.text().catch(() => '')  // 接続を解放
-    await sleep(retryDelay(res, attempt))
-    res = await fetch(`${baseUrl}/chat/completions`, init)
+  const deadline = Date.now() + TOTAL_BUDGET_MS
+  let res: Response | null = null
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const remaining = deadline - Date.now()
+    if (attempt > 0 && remaining < MIN_ATTEMPT_MS) break
+    try {
+      res = await fetch(`${baseUrl}/chat/completions`, {
+        ...init,
+        signal: AbortSignal.timeout(Math.min(ATTEMPT_TIMEOUT_MS, remaining)),
+      })
+      if (!RETRY_STATUSES.has(res.status)) break
+      if (attempt < MAX_ATTEMPTS - 1) await res.text().catch(() => '')  // 接続を解放
+    } catch (e) {
+      // タイムアウト/ネットワーク断は 504 相当として扱い、予算が残っていれば再試行する。
+      res = null
+      if (attempt === MAX_ATTEMPTS - 1 || deadline - Date.now() < MIN_ATTEMPT_MS) {
+        const err = new Error(`LLM request timed out or failed: ${e instanceof Error ? e.message : String(e)}`) as Error & { status?: number }
+        err.status = 504
+        throw err
+      }
+    }
+    if (attempt < MAX_ATTEMPTS - 1) await sleep(Math.min(retryDelay(res, attempt), Math.max(0, deadline - Date.now() - MIN_ATTEMPT_MS)))
+  }
+  if (!res) {
+    const err = new Error('LLM request timed out') as Error & { status?: number }
+    err.status = 504
+    throw err
   }
 
   const rateLimit: RateLimit = {

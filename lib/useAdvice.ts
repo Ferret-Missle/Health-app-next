@@ -52,8 +52,16 @@ export function useAdvice(): UseAdvice {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(args),
       })
-      const data = await res.json() as {
+      // タイムアウト等で Vercel が返す非JSONのエラーページでも落ちないようにする。
+      const data = await res.json().catch(() => null) as {
         ok: boolean; advice?: string; quota?: QuotaInfo; reason?: string; message?: string
+      } | null
+      if (!data) {
+        setError(res.status === 504 || res.status === 500
+          ? 'サーバーの処理が時間切れになりました。AIサービスが混み合っている可能性があります。しばらく待ってからもう一度お試しください。'
+          : `サーバーから想定外の応答がありました (${res.status})`)
+        setStatus('error')
+        return
       }
       if (data.quota) setQuota(data.quota)
 
