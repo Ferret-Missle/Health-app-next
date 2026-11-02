@@ -191,7 +191,7 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
 
   const tdeeNote = tdeeSource === 'insufficientData'
     ? '目標摂取カロリー: データ不足のため算出不可'
-    : `目標摂取カロリー: 1日あたり約${r(targetIntake)}kcal以下 (${tdeeSource === 'adaptive' ? 'アダプティブTDEE' : 'Google Health推定消費(80%換算)'}${r(avgTdee)} − 目標黒字${r(dailyTarget)})`
+    : `目標摂取カロリー: 1日あたり約${r(targetIntake)}kcal以下 (${tdeeSource === 'adaptive' ? 'アダプティブTDEE' : 'Google Health推定消費(補正換算)'}${r(avgTdee)} − 目標黒字${r(dailyTarget)})`
 
   // Catch-up framing: rather than repeatedly flagging one bad day with no way
   // forward, compare "fully offset within the next 7 days" against "spread
@@ -227,7 +227,7 @@ export function buildAdvicePrompt(ctx: AdviceContext): LlmMessage[] {
     curW > 0 ? `現在体重(トレンド): ${r1(curW)}kg` : '体重データ: 不足(直近の測定なし)',
     `日次目標黒字: +${r(dailyTarget)}kcal`,
     tdeeNote,
-    `参考: Google Health推定消費(報告値の80%換算、直近${TDEE_WINDOW_DAYS}日平均) ${r(avgBurnWindow)}kcal/日`,
+    `参考: Google Health推定消費(報告値を補正係数で換算、直近${TDEE_WINDOW_DAYS}日平均) ${r(avgBurnWindow)}kcal/日`,
     `直近7日の累積収支: ${sumD >= 0 ? '+' : ''}${r(sumD)}kcal (平均 消費${r(avgBurn7)} / 摂取${r(avgIntake)})`,
     paceLine,
     longTermLine,

@@ -1,5 +1,5 @@
 import { sql } from './db'
-import { rowsToDayData, type DailyRow } from './data'
+import { rowsToCalibratedDayData, type DailyRow } from './data'
 import { buildAdvicePrompt, LONG_TERM_WINDOW_DAYS, type AdvisorPersona } from './advisor'
 import { chat, type LlmConfig } from './groq'
 import { estimateQuota, recordUsage, cacheRpd, getCachedRpd, type QuotaEstimate } from './quota'
@@ -39,7 +39,7 @@ async function recentData(userId: string, days = LONG_TERM_WINDOW_DAYS) {
     ) recent
     ORDER BY date ASC
   ` as DailyRow[]
-  return rowsToDayData(rows)
+  return rowsToCalibratedDayData(rows)
 }
 
 /**
