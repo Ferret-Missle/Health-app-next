@@ -286,7 +286,11 @@ export default function BalanceTab({ s, set, c, data, dailyTarget }: TabProps) {
   const grpPrevDis = (all.length - (s.grpOff + 1) * WIN) <= 0
   const grpNextDis = s.grpOff === 0
 
-  const baseDate = new Date(2026, 5, 1); baseDate.setMonth(baseDate.getMonth() - s.calOff)
+  // Anchor the calendar on the latest recorded month (not a fixed date), so the month arrows
+  // can reach the months that actually have data. Falls back to the current month if no data.
+  const latest   = all[all.length - 1]
+  const anchor   = latest ? new Date(latest.yr, latest.mon, 1) : new Date()
+  const baseDate = new Date(anchor.getFullYear(), anchor.getMonth() - s.calOff, 1)
   const calYr    = baseDate.getFullYear(), calMon = baseDate.getMonth()
   const calPrevDis = !all.some(x => x.yr < calYr || (x.yr === calYr && x.mon < calMon))
   const calNextDis = s.calOff === 0
