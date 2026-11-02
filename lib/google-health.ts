@@ -15,6 +15,22 @@ const JST_OFFSET_SECONDS = 9 * 3600
 const MAX_ROLLUP_DAYS = 14
 const DAY_MS = 86400000
 
+// Google Health occasionally returns transient 5xx (e.g. 503 UNAVAILABLE, 500
+// INTERNAL) or 429. Retry those with exponential backoff (1s, 2s, 4s); 4xx errors
+// (auth, scope, bad request) are not retried since they won't change on retry.
+const RETRY_STATUSES = new Set([429, 500, 502, 503, 504])
+const MAX_RETRIES = 3
+const RETRY_BASE_MS = 1000
+
+async function fetchWithRetry(input: string | URL, init: RequestInit): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(input, init)
+    if (res.ok || !RETRY_STATUSES.has(res.status) || attempt >= MAX_RETRIES) return res
+    await res.text().catch(() => '')  // drain the body before retrying
+    await new Promise(r => setTimeout(r, RETRY_BASE_MS * 2 ** attempt))
+  }
+}
+
 // Promise.allSettled swallows rejections, which made a disabled API / missing
 // scope look like "synced, 0 days". Collect them (trimmed — Google's error body
 // can be long) so the sync route can show why a data type came back empty.
@@ -73,7 +89,7 @@ async function dailyRollUpChunk(
   const points: RollupPoint[] = []
   let pageToken: string | undefined
   do {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `${HEALTH_API}/users/me/dataTypes/${dataType}/dataPoints:dailyRollUp`,
       {
         method: 'POST',
@@ -146,7 +162,7 @@ async function fetchSleepMinutesByDate(
     const url = new URL(`${HEALTH_API}/users/me/dataTypes/sleep/dataPoints`)
     url.searchParams.set('pageSize', '100')
     if (pageToken) url.searchParams.set('pageToken', pageToken)
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } })
+    const res = await fetchWithRetry(url, { headers: { Authorization: `Bearer ${accessToken}` } })
     if (!res.ok) throw new Error(`Health[sleep] ${res.status}: ${await res.text()}`)
     const data = await res.json() as SleepListResponse
 
