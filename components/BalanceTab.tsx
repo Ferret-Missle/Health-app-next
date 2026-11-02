@@ -123,7 +123,7 @@ function BalanceChart({ series, view, range, dailyTarget, c }: {
 function GroupedChart({ days, dark, c }: { days: DayData[], dark: boolean, c: C }) {
   const W = 352, H = 140, pl = 30, pr = 6, pt = 14, pb = 20
   const iw = W - pl - pr, ih = H - pt - pb, n = days.length
-  const mx   = Math.max(1, ...days.map(x => Math.max(x.intake, x.burn))) * 1.08
+  const mx   = Math.max(1, ...days.map(x => Math.max(x.intake, x.burn, x.burnRaw))) * 1.08
   const slot = iw / n, bw = slot * 0.3
   const Y = (v: number) => pt + ih - v / mx * ih
   const stripe = dark ? 'rgba(10,14,12,0.6)' : 'rgba(255,255,255,0.6)'
@@ -171,6 +171,12 @@ function GroupedChart({ days, dark, c }: { days: DayData[], dark: boolean, c: C 
             <rect x={cx + 1}     y={Y(x.burn)}   width={bw} height={pt + ih - Y(x.burn)}   rx={2.5}
               fill="url(#burnHatch)" stroke={c.tertiary} strokeWidth={1}
               opacity={sel == null || active ? 1 : 0.4} pointerEvents="none" />
+            {/* 100% (as-reported Google burn) reference line across the burn bar */}
+            {x.burnRaw > x.burn && (
+              <line x1={cx + 1 - 2} x2={cx + 1 + bw + 2} y1={Y(x.burnRaw)} y2={Y(x.burnRaw)}
+                stroke={c.tertiary} strokeWidth={1.6} strokeDasharray="2 2" strokeLinecap="round"
+                opacity={sel == null || active ? 1 : 0.4} pointerEvents="none" />
+            )}
             <text x={cx} y={H - 6} textAnchor="middle" fill={c.onSurfVar} fontSize={8} fontFamily="Roboto, sans-serif" pointerEvents="none">{x.dom}</text>
           </g>
         )
@@ -178,7 +184,7 @@ function GroupedChart({ days, dark, c }: { days: DayData[], dark: boolean, c: C 
       {/* tooltip for the selected day */}
       {selDay && (() => {
         const cx = pl + (sel! + 0.5) * slot
-        const bw2 = 96, bh = 38
+        const bw2 = 124, bh = 50
         const bx = Math.min(Math.max(cx - bw2 / 2, 2), W - bw2 - 2)
         return (
           <g pointerEvents="none">
@@ -186,7 +192,8 @@ function GroupedChart({ days, dark, c }: { days: DayData[], dark: boolean, c: C 
               stroke={c.outlineVar} strokeWidth={1} />
             <text x={bx + 8} y={pt + 11} fill={c.onSurf} fontSize={9} fontWeight={600} fontFamily="Roboto, sans-serif">{selDay.md}</text>
             <text x={bx + 8} y={pt + 23} fill={c.primary} fontSize={9} fontFamily="Roboto, sans-serif" style={{ fontFeatureSettings: '"tnum"' }}>摂取 {Math.round(selDay.intake).toLocaleString()}</text>
-            <text x={bx + 8} y={pt + 34} fill={c.tertiary} fontSize={9} fontFamily="Roboto, sans-serif" style={{ fontFeatureSettings: '"tnum"' }}>消費 {Math.round(selDay.burn).toLocaleString()}</text>
+            <text x={bx + 8} y={pt + 34} fill={c.tertiary} fontSize={9} fontFamily="Roboto, sans-serif" style={{ fontFeatureSettings: '"tnum"' }}>消費(80%) {Math.round(selDay.burn).toLocaleString()}</text>
+            <text x={bx + 8} y={pt + 45} fill={c.tertiary} fontSize={8} fontFamily="Roboto, sans-serif" style={{ fontFeatureSettings: '"tnum"' }}>報告(100%) {Math.round(selDay.burnRaw).toLocaleString()}</text>
           </g>
         )
       })()}
@@ -369,7 +376,7 @@ export default function BalanceTab({ s, set, c, data, dailyTarget }: TabProps) {
           <span style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
             摂取 と 消費
             <InfoTip c={c} text={
-              '日ごとの摂取カロリー(無地の棒)と消費カロリー(斜線の棒)を並べて比較。消費が摂取を上回るほど黒字=減量に有利。左の目盛りはkcal。'
+              '日ごとの摂取カロリー(無地の棒)と消費カロリー(斜線の棒)を並べて比較。消費が摂取を上回るほど黒字=減量に有利。左の目盛りはkcal。\n\n斜線の棒は Google Health の報告値の80%換算(過大評価の補正)。斜線の上の点線は補正前(100%)の報告値。'
             } />
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
@@ -384,7 +391,10 @@ export default function BalanceTab({ s, set, c, data, dailyTarget }: TabProps) {
             <span style={{ width: 12, height: 12, borderRadius: 3, background: c.primary, display: 'inline-block' }} />摂取(無地)
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 3, border: `1px solid ${c.tertiary}`, display: 'inline-block' }} />消費(斜線)
+            <span style={{ width: 12, height: 12, borderRadius: 3, border: `1px solid ${c.tertiary}`, display: 'inline-block' }} />消費 80%(斜線)
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 14, height: 0, borderTop: `2px dotted ${c.tertiary}`, display: 'inline-block' }} />報告 100%
           </span>
         </div>
       </div>
