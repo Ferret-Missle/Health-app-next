@@ -1,3 +1,10 @@
+/**
+ * Google Watch's reported calorie burn is treated as possibly over-estimated, so
+ * all calculations use this fraction of it (80%). The as-reported (100%) values
+ * are kept alongside as `burnRaw` / `dRaw` / `cumRaw` for comparison on charts.
+ */
+export const GOOGLE_BURN_FACTOR = 0.8;
+
 export interface DayData {
   dt: Date;
   md: string;    // "6/20"
@@ -5,16 +12,19 @@ export interface DayData {
   mon: number;
   yr: number;
   dow: number;
-  burn: number;
+  burn: number;        // burn used for all calculations = burnRaw × GOOGLE_BURN_FACTOR (80%)
+  burnRaw: number;     // Google Health as-reported burn (100%)
   intake: number;      // as-logged intake (0 = not logged)
   intakeEst?: number;  // provisional intake used for `d` when this day was not logged (past-2-month logged average)
-  d: number;     // balance = burn - (intake, or intakeEst when unlogged)
+  d: number;     // balance = burn - (intake, or intakeEst when unlogged)  [80% burn]
+  dRaw: number;  // balance using burnRaw (100%), for comparison only
   w: number;     // weight kg
   bf: number;    // body fat %
   p: number;     // protein g
   f: number;     // fat g
   cc: number;    // carbs g
-  cum: number;   // cumulative balance
+  cum: number;   // cumulative balance [80% burn]
+  cumRaw: number; // cumulative balance using burnRaw (100%), for comparison only
   steps?: number;  // optional: only populated from DB rows (not seed mock)
   sleep?: number;  // optional: sleep minutes, from DB rows
   foods?: string;  // optional: that day's logged food names, from DB rows
@@ -25,14 +35,17 @@ function gen(): DayData[] {
   const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
   const N = 120;
   const today = new Date(2026, 5, 20); // June 20, 2026
-  const arr: Omit<DayData, 'cum'>[] = [];
+  // Seed mock has no Google-reported raw value, so the raw burn is the mock value itself.
+  const arr: Omit<DayData, 'cum' | 'cumRaw'>[] = [];
 
   for (let i = N - 1; i >= 0; i--) {
     const dt = new Date(today);
     dt.setDate(today.getDate() - i);
-    const burn   = Math.round(2180 + rnd() * 470);
-    const intake = Math.round(1720 + rnd() * 560);
-    const d  = burn - intake;
+    const burnRaw = Math.round(2180 + rnd() * 470);
+    const burn    = Math.round(burnRaw * GOOGLE_BURN_FACTOR);
+    const intake  = Math.round(1720 + rnd() * 560);
+    const d    = burn - intake;
+    const dRaw = burnRaw - intake;
     const w  = Math.round((81.0  - (N - 1 - i) * 0.047 + (rnd() - 0.5) * 0.62) * 10) / 10;
     const bf = Math.round((27.5  - (N - 1 - i) * 0.014 + (rnd() - 0.5) * 0.4)  * 10) / 10;
     const p  = Math.round(intake * (0.24 + rnd() * 0.04) / 4);
@@ -45,12 +58,12 @@ function gen(): DayData[] {
       mon: dt.getMonth(),
       yr:  dt.getFullYear(),
       dow: dt.getDay(),
-      burn, intake, d, w, bf, p, f, cc,
+      burn, burnRaw, intake, d, dRaw, w, bf, p, f, cc,
     });
   }
 
-  let cum = 0;
-  return arr.map(x => ({ ...x, cum: (cum += x.d) }));
+  let cum = 0, cumRaw = 0;
+  return arr.map(x => ({ ...x, cum: (cum += x.d), cumRaw: (cumRaw += x.dRaw) }));
 }
 
 export const DATA: DayData[] = gen();
@@ -85,7 +98,7 @@ const num = (v: number | string | null | undefined): number => {
  * recomputed across the returned window, matching the seed generator's logic.
  */
 export function rowsToDayData(rows: DailyRow[]): DayData[] {
-  let cum = 0;
+  let cum = 0, cumRaw = 0;
   const todayJst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
   const ts = rows.map(r => Date.parse(`${r.date}T00:00:00Z`));
   const kcal = rows.map(r => num(r.intake_kcal));
@@ -105,12 +118,16 @@ export function rowsToDayData(rows: DailyRow[]): DayData[] {
     // 'YYYY-MM-DD' -> local Date at midnight (treat the string as the calendar date)
     const [yr, mon, dom] = r.date.split('-').map(Number);
     const dt = new Date(yr, mon - 1, dom);
-    const burn   = num(r.burn_kcal);
+    const burnRaw = num(r.burn_kcal);
+    const burn    = Math.round(burnRaw * GOOGLE_BURN_FACTOR);
     const intake = kcal[i];
     // Today is still in progress, so it is left as-is.
-    const intakeEst = intake > 0 || burn <= 0 || r.date >= todayJst ? 0 : provisional(i);
-    const d      = burn - (intakeEst > 0 ? intakeEst : intake);
-    cum += d;
+    const intakeEst = intake > 0 || burnRaw <= 0 || r.date >= todayJst ? 0 : provisional(i);
+    const used = intakeEst > 0 ? intakeEst : intake;
+    const d    = burn - used;      // 80% burn: used for all calculations
+    const dRaw = burnRaw - used;   // 100% burn: comparison only
+    cum    += d;
+    cumRaw += dRaw;
     return {
       dt,
       md:  `${dt.getMonth() + 1}/${dt.getDate()}`,
@@ -119,15 +136,18 @@ export function rowsToDayData(rows: DailyRow[]): DayData[] {
       yr:  dt.getFullYear(),
       dow: dt.getDay(),
       burn,
+      burnRaw,
       intake,
       ...(intakeEst > 0 ? { intakeEst } : {}),
       d,
+      dRaw,
       w:  num(r.weight_kg),
       bf: num(r.body_fat_pct),
       p:  num(r.p_g),
       f:  num(r.f_g),
       cc: num(r.c_g),
       cum,
+      cumRaw,
       steps: num(r.steps),
       sleep: num(r.sleep_min),
       foods: r.foods ?? undefined,

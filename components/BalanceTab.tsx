@@ -57,9 +57,11 @@ function BalanceChart({ series, view, range, dailyTarget, c }: {
 
   if (effView === 'cumulative') {
     let cum = 0; const cumA = series.map(x => (cum += x.d))
+    // Same window, but with the as-reported (100%) Google burn — drawn as a reference line.
+    let cumR = 0; const cumRawA = series.map(x => (cumR += x.dRaw))
     const tgtA  = series.map((_, i) => per * (i + 1))
-    const ymax  = Math.max(...cumA, ...tgtA, 1) * 1.08
-    const ymin  = Math.min(0, ...cumA)
+    const ymax  = Math.max(...cumA, ...cumRawA, ...tgtA, 1) * 1.08
+    const ymin  = Math.min(0, ...cumA, ...cumRawA)
     const X     = (i: number) => pl + (n <= 1 ? iw / 2 : i * iw / (n - 1))
     const Y     = (v: number) => pt + ih - (v - ymin) / ((ymax - ymin) || 1) * ih
     const y0    = Y(0)
@@ -76,6 +78,9 @@ function BalanceChart({ series, view, range, dailyTarget, c }: {
       fill="none" stroke={c.onSurfVar} strokeWidth={1.6} strokeDasharray="5 4" />)
     els.push(<polyline key="cl" points={cumA.map((v, i) => `${X(i)},${Y(v)}`).join(' ')}
       fill="none" stroke={c.credit} strokeWidth={2.6} strokeLinejoin="round" strokeLinecap="round" />)
+    // Overlay: the 100% (as-reported Google burn) cumulative line, for comparison with the 80% line.
+    els.push(<polyline key="rw" points={cumRawA.map((v, i) => `${X(i)},${Y(v)}`).join(' ')}
+      fill="none" stroke={c.tertiary} strokeWidth={1.6} strokeDasharray="2 3" strokeLinecap="round" opacity={0.85} />)
     els.push(<circle key="end" cx={X(n - 1)} cy={Y(cumA[n - 1])} r={4} fill={c.credit} />)
     els.push(txtEl('x-start', X(0), H - 7, series[0].md, 'start'))
     els.push(txtEl('x-end', X(n - 1), H - 7, series[n - 1].md, 'end'))
@@ -327,7 +332,7 @@ export default function BalanceTab({ s, set, c, data, dailyTarget }: TabProps) {
             <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
               カロリー収支
               <InfoTip c={c} text={
-                '日々の収支 d = 消費 − 摂取。d>0=黒字(カロリーを削減できた=減量に有利)、d<0=赤字(オーバー)。\n\n「累積」表示は黒字の積み上がりと目標線、「日次」表示はゼロ基準の発散棒。上のトグルと期間(7日/30日/全期間)で切替。'
+                '日々の収支 d = 消費 − 摂取。d>0=黒字(カロリーを削減できた=減量に有利)、d<0=赤字(オーバー)。\n\n消費は Google Health の推定値の80%で計算しています(過大評価の補正)。\n\n「累積」表示は黒字の積み上がりと目標線、「日次」表示はゼロ基準の発散棒。累積では補正前(100%)の線を点線で重ねて表示。上のトグルと期間(7日/30日/全期間)で切替。'
               } />
             </div>
             <div style={{ fontSize: 11, color: c.onSurfVar, marginTop: 1 }}>{subtitle}</div>
@@ -351,6 +356,11 @@ export default function BalanceTab({ s, set, c, data, dailyTarget }: TabProps) {
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 14, height: 0, borderTop: `2px dashed ${c.onSurfVar}`, display: 'inline-block' }} />目標
           </span>
+          {effView === 'cumulative' && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 14, height: 0, borderTop: `2px dotted ${c.tertiary}`, display: 'inline-block' }} />消費100%(補正前)
+            </span>
+          )}
         </div>
       </div>
 
