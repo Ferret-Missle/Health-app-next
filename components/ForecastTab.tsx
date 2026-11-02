@@ -378,7 +378,7 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabP
         <div style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px', marginBottom: 2 }}>
           ペース診断
           <InfoTip c={c} text={
-            `直近${TDEE_WINDOW_DAYS}日の「申告摂取量」「アダプティブTDEE(実際の体重変化から逆算した消費カロリー)」「Google Health推定消費」を比較。\n\nアダプティブTDEEがGoogle Health推定を大きく下回っている場合、摂取の記録漏れ(過小申告)の可能性があります。`
+            `直近${TDEE_WINDOW_DAYS}日の「申告摂取量」「アダプティブTDEE(実際の体重変化から逆算した消費カロリー)」「Google Health推定消費(80%換算)」を比較。\n\nGoogle Health推定消費は過大評価の可能性を考慮し、報告値の80%で計算しています。アダプティブTDEEがこの値を大きく下回っている場合、摂取の記録漏れ(過小申告)の可能性があります。`
           } />
         </div>
         <div style={{ fontSize: 11, color: c.onSurfVar, padding: '0 4px', marginBottom: 14 }}>直近{TDEE_WINDOW_DAYS}日</div>
@@ -388,7 +388,7 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabP
               {[
                 { label: '申告摂取(平均)', value: paceTdee.avgLoggedIntake, col: c.primary },
                 { label: 'アダプティブTDEE', value: paceTdee.avgTdee, col: c.tertiary },
-                { label: 'Google Health推定', value: avgBurnWindow, col: c.onSurfVar },
+                { label: 'Google推定(80%)', value: avgBurnWindow, col: c.onSurfVar },
               ].map(m => (
                 <div key={m.label} style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 11, color: c.onSurfVar, whiteSpace: 'nowrap' }}>{m.label}</div>
