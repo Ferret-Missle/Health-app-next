@@ -1,3 +1,5 @@
+import { selectBurnFactor } from './forecast'
+
 /**
  * Google Watch's reported calorie burn is treated as possibly over-estimated, so
  * all calculations use this fraction of it (80%). The as-reported (100%) values
@@ -14,6 +16,7 @@ export interface DayData {
   dow: number;
   burn: number;        // burn used for all calculations = burnRaw × GOOGLE_BURN_FACTOR (80%)
   burnRaw: number;     // Google Health as-reported burn (100%)
+  burnFactor: number;  // factor applied to burnRaw (default GOOGLE_BURN_FACTOR; may be calibrated from the user's record)
   intake: number;      // as-logged intake (0 = not logged)
   intakeEst?: number;  // provisional intake used for `d` when this day was not logged (past-2-month logged average)
   d: number;     // balance = burn - (intake, or intakeEst when unlogged)  [80% burn]
@@ -58,7 +61,7 @@ function gen(): DayData[] {
       mon: dt.getMonth(),
       yr:  dt.getFullYear(),
       dow: dt.getDay(),
-      burn, burnRaw, intake, d, dRaw, w, bf, p, f, cc,
+      burn, burnRaw, burnFactor: GOOGLE_BURN_FACTOR, intake, d, dRaw, w, bf, p, f, cc,
     });
   }
 
@@ -97,7 +100,7 @@ const num = (v: number | string | null | undefined): number => {
  * Rows are expected sorted ascending by date. cum (cumulative balance) is
  * recomputed across the returned window, matching the seed generator's logic.
  */
-export function rowsToDayData(rows: DailyRow[]): DayData[] {
+export function rowsToDayData(rows: DailyRow[], factor: number = GOOGLE_BURN_FACTOR): DayData[] {
   let cum = 0, cumRaw = 0;
   const todayJst = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
   const ts = rows.map(r => Date.parse(`${r.date}T00:00:00Z`));
@@ -119,7 +122,7 @@ export function rowsToDayData(rows: DailyRow[]): DayData[] {
     const [yr, mon, dom] = r.date.split('-').map(Number);
     const dt = new Date(yr, mon - 1, dom);
     const burnRaw = num(r.burn_kcal);
-    const burn    = Math.round(burnRaw * GOOGLE_BURN_FACTOR);
+    const burn    = Math.round(burnRaw * factor);
     const intake = kcal[i];
     // Today is still in progress, so it is left as-is.
     const intakeEst = intake > 0 || burnRaw <= 0 || r.date >= todayJst ? 0 : provisional(i);
@@ -137,6 +140,7 @@ export function rowsToDayData(rows: DailyRow[]): DayData[] {
       dow: dt.getDay(),
       burn,
       burnRaw,
+      burnFactor: factor,
       intake,
       ...(intakeEst > 0 ? { intakeEst } : {}),
       d,
@@ -153,6 +157,16 @@ export function rowsToDayData(rows: DailyRow[]): DayData[] {
       foods: r.foods ?? undefined,
     };
   });
+}
+
+/**
+ * DB rows -> DayData[] using the burn factor selected from the user's own record
+ * (see selectBurnFactor in lib/forecast.ts). Falls back to GOOGLE_BURN_FACTOR.
+ */
+export function rowsToCalibratedDayData(rows: DailyRow[]): DayData[] {
+  const base = rowsToDayData(rows, GOOGLE_BURN_FACTOR)
+  const { factor } = selectBurnFactor(base, GOOGLE_BURN_FACTOR)
+  return factor === GOOGLE_BURN_FACTOR ? base : rowsToDayData(rows, factor)
 }
 
 export function movingAvg(arr: number[], k: number): number[] {

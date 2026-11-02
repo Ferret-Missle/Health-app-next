@@ -272,6 +272,38 @@ export function estimateBurnCorrection(
   }
 }
 
+/** Bounds on an auto-applied burn factor (a calibrated value outside this is not trusted). */
+export const BURN_FACTOR_MIN = 0.6
+export const BURN_FACTOR_MAX = 1.0
+
+export interface BurnFactorSelection {
+  factor:     number   // factor to apply to Google's as-reported burn
+  calibrated: boolean  // true when derived from the user's own record, false when the default is used
+  estimate:   BurnCorrectionEstimate | null
+}
+
+/**
+ * Choose the burn factor to apply. The empirical estimate is used only when the
+ * last TDEE_WINDOW_DAYS are fully logged (every day has intake, none imputed)
+ * and the estimate is computable; it is clamped to [BURN_FACTOR_MIN, BURN_FACTOR_MAX].
+ * Otherwise the default is returned.
+ *
+ * Note: full logging does not remove systematic under-reporting; this rule only
+ * avoids using windows with imputed or missing intake.
+ */
+export function selectBurnFactor(data: DayData[], defaultFactor: number): BurnFactorSelection {
+  const window = data.slice(-TDEE_WINDOW_DAYS)
+  const fullyLogged = window.length === TDEE_WINDOW_DAYS && window.every(x => x.intake > 0 && !x.intakeEst)
+  if (!fullyLogged) return { factor: defaultFactor, calibrated: false, estimate: null }
+
+  const trend = estimateWeightTrend(data)
+  const estimate = estimateBurnCorrection(data, trend)
+  if (estimate.factor == null) return { factor: defaultFactor, calibrated: false, estimate }
+
+  const clamped = Math.min(BURN_FACTOR_MAX, Math.max(BURN_FACTOR_MIN, estimate.factor))
+  return { factor: clamped, calibrated: true, estimate }
+}
+
 // ── Daily target / target intake (single source of truth) ──────────────────
 
 export type TdeeSource = 'adaptive' | 'avgBurnFallback' | 'insufficientData'

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { DATA, rowsToDayData, type DayData, type DailyRow } from './data'
+import { DATA, rowsToCalibratedDayData, type DayData, type DailyRow } from './data'
 import { authFetch } from './authFetch'
 
 // Sync scopes. Launch is the lightest (just catch up the last few days); the
@@ -31,7 +31,7 @@ async function fetchData(days: number): Promise<{ data: DayData[]; lastSynced: D
   const res = await authFetch(`/api/health/data?days=${days}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`data fetch failed: ${res.status}`)
   const { rows, lastSynced } = await res.json() as { rows: DailyRow[]; lastSynced: string | null }
-  return { data: rowsToDayData(rows), lastSynced: lastSynced ? new Date(lastSynced) : null }
+  return { data: rowsToCalibratedDayData(rows), lastSynced: lastSynced ? new Date(lastSynced) : null }
 }
 
 /**
