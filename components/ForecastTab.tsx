@@ -2,7 +2,7 @@
 
 import type { TabProps } from '@/lib/types'
 import { fx, type DayData } from '@/lib/data'
-import { estimateWeightTrend, estimateAdaptiveTdee, buildTrajectory, buildBalancePaceTrajectory, TDEE_WINDOW_DAYS } from '@/lib/forecast'
+import { estimateWeightTrend, estimateAdaptiveTdee, estimateBurnCorrection, buildTrajectory, buildBalancePaceTrajectory, TDEE_WINDOW_DAYS } from '@/lib/forecast'
 import type { C } from '@/lib/colors'
 import InfoTip from './InfoTip'
 
@@ -271,6 +271,7 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabP
   const paceWindow = data.slice(-TDEE_WINDOW_DAYS)
   const paceTrend  = estimateWeightTrend(paceWindow)
   const paceTdee   = estimateAdaptiveTdee(paceWindow, paceTrend)
+  const burnCorr   = estimateBurnCorrection(data, paceTrend)
   const avgBurnWindow = paceWindow.length
     ? paceWindow.reduce((sum, x) => sum + x.burn, 0) / paceWindow.length
     : 0
@@ -399,6 +400,11 @@ export default function ForecastTab({ s, set, c, data, daysLeft, onTrack }: TabP
               ))}
             </div>
             <div style={{ fontSize: 11, color: c.onSurfVar, padding: '12px 4px 0', lineHeight: '17px' }}>{diagnosisText}</div>
+            {burnCorr.factor != null && (
+              <div style={{ fontSize: 11, color: c.onSurfVar, padding: '6px 4px 0', lineHeight: '17px', fontFeatureSettings: '"tnum"' }}>
+                実績からの推定係数: {burnCorr.factor.toFixed(2)}（計算には未適用・参考 0.80。記録漏れがあると低めに出ます）
+              </div>
+            )}
           </>
         ) : (
           <div style={{ fontSize: 12, color: c.onSurfVar, padding: '4px 4px 0' }}>{diagnosisText}</div>

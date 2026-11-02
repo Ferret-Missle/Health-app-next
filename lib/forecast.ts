@@ -234,6 +234,44 @@ export function estimateAdaptiveTdee(
   return { avgTdee, windowDays: actualWindowDays, avgLoggedIntake, deltaWKg, usable }
 }
 
+// ── Empirical burn-correction factor (diagnostic) ──────────────────────────
+
+export interface BurnCorrectionEstimate {
+  factor:       number | null  // adaptiveTDEE / mean(burnRaw) over the window; null when not estimable
+  adaptiveTdee: number         // kcal/day, as-logged units (see estimateAdaptiveTdee)
+  avgBurnRaw:   number         // kcal/day, Google as-reported burn, mean over the window
+  loggedDays:   number         // days with logged intake in the window
+}
+
+/**
+ * Estimate the Google burn correction factor from the user's own record:
+ * the adaptive TDEE (weight change + logged intake, independent of the watch)
+ * divided by the average as-reported Google burn over the same window.
+ *
+ * Caveat: the adaptive TDEE also absorbs intake under-reporting, so this ratio
+ * measures "watch overestimate × logging bias" together and is biased low when
+ * intake is under-logged. It is a diagnostic readout, not a validated truth.
+ */
+export function estimateBurnCorrection(
+  data: DayData[],
+  trend: WeightTrend,
+  opts: { windowDays?: number; kConst?: number } = {},
+): BurnCorrectionEstimate {
+  const { windowDays = TDEE_WINDOW_DAYS } = opts
+  const tdee   = estimateAdaptiveTdee(data, trend, opts)
+  const window = data.slice(-windowDays)
+  const burns  = window.map(x => x.burnRaw).filter(v => v > 0)
+  const avgBurnRaw = burns.length ? burns.reduce((s, v) => s + v, 0) / burns.length : 0
+  const loggedDays = window.filter(x => x.intake > 0).length
+  const usable = tdee.usable && avgBurnRaw > 0 && tdee.avgTdee > 0
+  return {
+    factor: usable ? tdee.avgTdee / avgBurnRaw : null,
+    adaptiveTdee: tdee.avgTdee,
+    avgBurnRaw,
+    loggedDays,
+  }
+}
+
 // ── Daily target / target intake (single source of truth) ──────────────────
 
 export type TdeeSource = 'adaptive' | 'avgBurnFallback' | 'insufficientData'
