@@ -39,37 +39,39 @@ function Centered({ children }: { children: React.ReactNode }) {
   )
 }
 
-/** One day column: diverging bar from a centre zero line (CSS only). */
+/**
+ * One day column: diverging bar from a centre zero line (CSS only).
+ * The bar track takes whatever height is left (flex: 1) and bars are sized as
+ * a percentage of it, so the column can never be taller than its parent.
+ */
 function DayBar({ day, maxAbs, isLatest }: { day: DayData; maxAbs: number; isLatest: boolean }) {
-  const H = 148
   const frac = Math.min(1, Math.abs(day.d) / maxAbs)
-  const barH = Math.max(3, frac * (H / 2 - 4))
   const col = balColor(day.d)
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 0 }}>
+    <div style={{
+      flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
+    }}>
       <div style={{
-        fontSize: 17, fontWeight: 700, color: col, fontFeatureSettings: '"tnum"',
-        whiteSpace: 'nowrap',
+        flex: 'none', fontSize: 15, fontWeight: 600, color: col, fontFeatureSettings: '"tnum"',
+        whiteSpace: 'nowrap', opacity: 0.9,
       }}>{signed(day.d)}</div>
-      <div style={{ position: 'relative', width: '100%', height: H }}>
+      <div style={{ position: 'relative', width: '100%', flex: 1, minHeight: 0, margin: '4px 0' }}>
         <div style={{
-          position: 'absolute', left: 0, right: 0, top: H / 2, height: 2,
+          position: 'absolute', left: 0, right: 0, top: '50%', height: 2,
           background: c.outline, transform: 'translateY(-1px)',
         }} />
         <div style={{
           position: 'absolute', left: '50%', transform: 'translateX(-50%)',
-          width: 34, borderRadius: 6, background: col,
-          ...(day.d >= 0
-            ? { bottom: H / 2 + 1, height: barH }
-            : { top: H / 2 + 1, height: barH }),
+          width: '72%', minHeight: 6, height: `${frac * 50}%`, borderRadius: 8, background: col,
+          ...(day.d >= 0 ? { bottom: '50%' } : { top: '50%' }),
         }} />
       </div>
-      <div style={{ textAlign: 'center', lineHeight: 1.25 }}>
+      <div style={{ flex: 'none', textAlign: 'center', lineHeight: 1.25 }}>
         <div style={{
-          fontSize: 19, fontWeight: isLatest ? 700 : 500,
+          fontSize: 17, fontWeight: isLatest ? 700 : 500,
           color: isLatest ? c.onSurf : c.onSurfVar,
         }}>{DOW[day.dow]}曜</div>
-        <div style={{ fontSize: 15, color: c.onSurfVar, fontFeatureSettings: '"tnum"' }}>{day.md}</div>
+        <div style={{ fontSize: 13, color: c.onSurfVar, fontFeatureSettings: '"tnum"' }}>{day.md}</div>
       </div>
     </div>
   )
@@ -153,70 +155,69 @@ export default function DisplayPage() {
   return (
     <div style={{
       height: '100dvh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
-      background: c.surface, color: c.onSurf, padding: '22px 36px 16px',
+      background: c.surface, color: c.onSurf, padding: '14px 28px 10px',
       fontFamily: '"Noto Sans JP", Roboto, system-ui, sans-serif',
     }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 18, flex: 'none' }}>
-        <div style={{ fontSize: 30, fontWeight: 700 }}>週間カロリー収支</div>
-        <div style={{ fontSize: 19, color: c.onSurfVar, fontFeatureSettings: '"tnum"' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 18, flex: 'none', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 24, fontWeight: 700 }}>週間カロリー収支</div>
+        <div style={{ fontSize: 16, color: c.onSurfVar, fontFeatureSettings: '"tnum"' }}>
           {week[0].md}（{DOW[week[0].dow]}）– {today.md}（{DOW[today.dow]}）
         </div>
         <div style={{ flex: 1 }} />
         {isMock && (
           <div style={{
-            fontSize: 14, color: c.offTrack, border: `1px solid ${c.offTrack}`,
+            fontSize: 13, color: c.offTrack, border: `1px solid ${c.offTrack}`,
             borderRadius: 999, padding: '3px 12px',
           }}>サンプルデータ表示中</div>
         )}
-        {syncLabel && <div style={{ fontSize: 16, color: c.onSurfVar }}>{syncLabel}</div>}
+        {syncLabel && <div style={{ fontSize: 14, color: c.onSurfVar }}>{syncLabel}</div>}
       </div>
 
       {/* Main */}
-      <div style={{ flex: 1, display: 'flex', gap: 40, minHeight: 0, paddingTop: 10 }}>
+      <div style={{ flex: 1, display: 'flex', gap: 20, minHeight: 0, paddingTop: 6 }}>
         {/* Latest day */}
         <div style={{
-          width: 316, flex: 'none', display: 'flex', flexDirection: 'column',
-          background: c.surfLow, borderRadius: 24, padding: '18px 24px',
+          width: 236, flex: 'none', boxSizing: 'border-box', minWidth: 0, display: 'flex', flexDirection: 'column',
+          background: c.surfLow, borderRadius: 20, padding: '12px 16px',
         }}>
-          <div style={{ fontSize: 20, color: c.onSurfVar }}>
+          <div style={{ fontSize: 17, color: c.onSurfVar, whiteSpace: 'nowrap' }}>
             {todayIsToday ? '今日' : `${today.md}（${DOW[today.dow]}）`} の収支
           </div>
           <div style={{
-            fontSize: 92, fontWeight: 700, lineHeight: 1.1, color: balColor(today.d),
+            fontSize: 44, fontWeight: 700, lineHeight: 1.15, color: balColor(today.d),
             fontFeatureSettings: '"tnum"', whiteSpace: 'nowrap',
           }}>{signed(today.d)}</div>
-          <div style={{ fontSize: 17, color: c.onSurfVar, marginTop: -4 }}>kcal（消費 − 摂取）</div>
+          <div style={{ fontSize: 13, color: c.onSurfVar }}>kcal（消費 − 摂取）</div>
           <div style={{ flex: 1 }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 19, color: c.onSurfVar }}>摂取{today.intakeEst ? '（推定）' : ''}</span>
-              <span style={{ fontSize: 34, fontWeight: 700, fontFeatureSettings: '"tnum"' }}>
-                {num(todayIntake)}<span style={{ fontSize: 17, color: c.onSurfVar, fontWeight: 500 }}> kcal</span>
+              <span style={{ fontSize: 15, color: c.onSurfVar }}>摂取{today.intakeEst ? '（推定）' : ''}</span>
+              <span style={{ fontSize: 24, fontWeight: 700, fontFeatureSettings: '"tnum"' }}>
+                {num(todayIntake)}<span style={{ fontSize: 13, color: c.onSurfVar, fontWeight: 500 }}> kcal</span>
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 19, color: c.onSurfVar }}>消費</span>
-              <span style={{ fontSize: 34, fontWeight: 700, fontFeatureSettings: '"tnum"' }}>
-                {num(today.burn)}<span style={{ fontSize: 17, color: c.onSurfVar, fontWeight: 500 }}> kcal</span>
+              <span style={{ fontSize: 15, color: c.onSurfVar }}>消費</span>
+              <span style={{ fontSize: 24, fontWeight: 700, fontFeatureSettings: '"tnum"' }}>
+                {num(today.burn)}<span style={{ fontSize: 13, color: c.onSurfVar, fontWeight: 500 }}> kcal</span>
               </span>
             </div>
           </div>
         </div>
 
         {/* Week */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
-            <div style={{ fontSize: 20, color: c.onSurfVar }}>直近{week.length}日間の合計</div>
-            <div style={{
-              fontSize: 58, fontWeight: 700, lineHeight: 1.1, color: balColor(weekSum),
-              fontFeatureSettings: '"tnum"', whiteSpace: 'nowrap',
-            }}>{signed(weekSum)}<span style={{ fontSize: 22, color: c.onSurfVar, fontWeight: 500 }}> kcal</span></div>
-            <div style={{ fontSize: 18, color: c.onSurfVar, fontFeatureSettings: '"tnum"' }}>
-              （1日平均 {signed(weekAvg)}）
-            </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          {/* Totals are a supporting caption; the bars are the main content. */}
+          <div style={{
+            flex: 'none', display: 'flex', alignItems: 'baseline', gap: 10, whiteSpace: 'nowrap',
+            fontSize: 16, color: c.onSurfVar, fontFeatureSettings: '"tnum"',
+          }}>
+            <span>直近{week.length}日間の合計</span>
+            <span style={{ fontSize: 24, fontWeight: 700, color: balColor(weekSum) }}>{signed(weekSum)}</span>
+            <span style={{ fontSize: 14 }}>kcal（1日平均 {signed(weekAvg)}）</span>
           </div>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 10, paddingTop: 8 }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 6, paddingTop: 4 }}>
             {week.map((day, i) => (
               <DayBar key={day.dt.getTime()} day={day} maxAbs={maxAbs} isLatest={i === week.length - 1} />
             ))}
@@ -225,7 +226,7 @@ export default function DisplayPage() {
       </div>
 
       {/* Footer */}
-      <div style={{ flex: 'none', fontSize: 14, color: c.onSurfVar, paddingTop: 8 }}>
+      <div style={{ flex: 'none', fontSize: 12, color: c.onSurfVar, paddingTop: 4, whiteSpace: 'nowrap' }}>
         収支がプラスの日は黒字（カロリーを削減できた日）、マイナスは赤字（オーバーした日）です。
       </div>
     </div>
